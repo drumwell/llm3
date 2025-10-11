@@ -10,6 +10,11 @@ import re
 from pathlib import Path
 from collections import defaultdict
 
+rgx_step_good = re.compile(r'^\s*\d+[.)]\s+\S')  # e.g., "1. Text"
+def is_valid_procedure(output: str) -> bool:
+    if not output: return False
+    lines = [l for l in output.splitlines() if l.strip()]
+    return any(rgx_step_good.match(l) for l in lines)
 
 def format_spec_entry(block):
     """
@@ -212,11 +217,17 @@ def format_wiring_entry(block):
 def transform_block(block):
     """Transform a block into instruction-tuning format based on task type."""
     task = block['task']
-    
+
     if task == 'spec':
         return format_spec_entry(block)
     elif task == 'procedure':
-        return format_procedure_entry(block)
+        # Format first, then validate the output
+        entry = format_procedure_entry(block)
+        if entry and is_valid_procedure(entry['output']):
+            return entry
+        else:
+            # Skip invalid procedure (no valid steps)
+            return None
     elif task == 'troubleshooting':
         return format_troubleshooting_entry(block)
     elif task == 'explanation':
@@ -258,24 +269,30 @@ def main():
     
     # Group entries by task
     entries_by_task = defaultdict(list)
-    skipped = 0
-    
+    skipped_filter = 0
+    skipped_invalid = 0
+
     for block_file in block_files:
         with open(block_file) as f:
             block = json.load(f)
-        
+
         # Check section filter
         section_id = block.get('section_id', '')
         if not section_pattern.match(section_id):
-            skipped += 1
+            skipped_filter += 1
             continue
-        
+
         # Transform block
         entry = transform_block(block)
         if entry:
             entries_by_task[entry['meta']['task']].append(entry)
-    
-    print(f"[05_emit_jsonl] Skipped {skipped} blocks (section filter)")
+        elif block.get('task') == 'procedure':
+            # Track skipped invalid procedures
+            skipped_invalid += 1
+            print(f"[05_emit_jsonl] Skipped invalid procedure from {block.get('page_no', '?')}")
+
+    print(f"[05_emit_jsonl] Skipped {skipped_filter} blocks (section filter)")
+    print(f"[05_emit_jsonl] Skipped {skipped_invalid} invalid procedures (no valid steps)")
     
     # Write JSONL files per task
     output_dir.mkdir(parents=True, exist_ok=True)

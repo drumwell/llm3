@@ -42,26 +42,27 @@ def validate_spec_output(output, config):
 def validate_numbered_output(output, config):
     """
     Validate procedure/troubleshooting output has numbered lines.
+    Each non-blank line must match '^[0-9]+[.)] <text>'.
     Returns (is_valid: bool, error_msg: str)
     """
-    step_regex = config['validation']['step_line_regex']
-    pattern = re.compile(step_regex, re.MULTILINE)
-    
-    lines = output.strip().split('\n')
-    non_empty_lines = [l for l in lines if l.strip()]
-    
-    if not non_empty_lines:
-        return False, "Empty output"
-    
-    # Check if all non-empty lines start with number
-    invalid_lines = []
-    for line in non_empty_lines:
-        if not pattern.match(line):
-            invalid_lines.append(line[:50])
-    
-    if invalid_lines:
-        return False, f"Lines without numbering: {invalid_lines[:2]}"
-    
+    # Explicit pattern: digit(s) + period/paren + space + non-whitespace
+    rgx_step_good = re.compile(r'^\s*\d+[.)]\s+\S')
+
+    if not output or not output.strip():
+        return False, "Procedure output is empty (require '1. <text>')"
+
+    lines = output.splitlines()
+    bad_lines = []
+    for ln, l in enumerate(lines, 1):
+        if l.strip() and not rgx_step_good.match(l):
+            bad_lines.append(ln)
+
+    if bad_lines:
+        return False, (
+            f"Invalid step lines at {bad_lines[:8]} "
+            f"(each non-blank line must match '^[0-9]+[.)] <text>')"
+        )
+
     return True, None
 
 

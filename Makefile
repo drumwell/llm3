@@ -19,4 +19,7 @@ emit:
 validate:
 	python scripts/06_split_validate.py --data-dir data --output work/logs/qa_report.md
 
+split:
+	python scripts/07_make_splits.py --data-dir data --pattern "*.slice.jsonl" --train-split 0.8
+
 all: inventory preprocess ocr blocks emit validate

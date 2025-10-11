@@ -110,29 +110,57 @@ def extract_spec_blocks(ocr_data, table_rows, config):
 
 
 def extract_procedure_blocks(ocr_data, config):
-    """Extract procedure step blocks from numbered lists."""
+    """
+    Extract procedure step blocks from numbered lists.
+    Converts bullets to numbered steps, enforces 1..N numbering, merges continuation lines.
+    """
     blocks = []
     text_full = ocr_data['text_full']
-    
+
     # Find procedure title/topic from first few lines
-    lines = ocr_data['lines'][:5]
-    topic = ' '.join([l['text'] for l in lines if len(l['text']) > 10])[:100]
-    
-    # Extract numbered steps
-    step_pattern = re.compile(r'^\s*(\d+)[\)\.]\s+(.+)', re.MULTILINE)
-    matches = step_pattern.findall(text_full)
-    
-    if matches and len(matches) <= config['task_rules']['procedure']['max_steps']:
-        steps = [{'step_num': int(m[0]), 'text': m[1].strip()} for m in matches]
-        
+    topic_lines = ocr_data['lines'][:5]
+    topic = ' '.join([l['text'] for l in topic_lines if len(l['text']) > 10])[:100]
+
+    # === ROBUST STEP EXTRACTION ===
+    lines = [l.rstrip() for l in text_full.splitlines()]
+    rgx_num = re.compile(r'^\s*(\d+)[.)]\s+(.+)')
+    rgx_bul = re.compile(r'^\s*[-•]\s+(.+)')
+    rgx_head = re.compile(r'^\s*(steps?|procedure)[:：]\s*', re.I)
+
+    steps = []
+    for l in lines:
+        if not l.strip():
+            continue
+        if rgx_head.match(l):
+            # Drop standalone headings like "Steps:" / "Procedure:"
+            continue
+        m = rgx_num.match(l)
+        if m and m.group(2).strip():
+            steps.append(m.group(2).strip())
+            continue
+        b = rgx_bul.match(l)
+        if b:
+            steps.append(b.group(1).strip())
+            continue
+        # Continuation lines: attach to previous step if any
+        if steps:
+            steps[-1] = (steps[-1] + " " + l.strip()).strip()
+
+    if not steps:
+        return []
+
+    # Normalize to strict 1..N numbering
+    normalized_steps = [{'step_num': i, 'text': s} for i, s in enumerate(steps, 1)]
+
+    if len(normalized_steps) <= config['task_rules']['procedure']['max_steps']:
         block = {
             'task': 'procedure',
-            'steps': steps,
+            'steps': normalized_steps,
             'topic': topic,
             'ocr_excerpt': text_full[:300]
         }
         blocks.append(block)
-    
+
     return blocks
 
 

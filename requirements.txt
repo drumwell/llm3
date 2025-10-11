@@ -1,5 +1,5 @@
 pillow
-opencv-python
+opencv-python==4.10.0.84
 numpy
 pandas
 tqdm
@@ -7,4 +7,5 @@ pyyaml
 regex
 beautifulsoup4
 rapidfuzz
-paddleocr==2.7.0.3
+pytesseract
+layoutparser

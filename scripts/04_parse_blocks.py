@@ -80,20 +80,48 @@ def classify_task_type(text_full, ocr_data, table_rows, type_keywords):
     return 'explanation'
 
 
+def is_valid_spec(value_raw, unit_raw):
+    """
+    Validate that a spec entry has numeric content.
+    Filters out text-only entries like "HWB" (supplier codes), "- intake", etc.
+    """
+    if not value_raw or not value_raw.strip():
+        return False
+
+    # Check if value contains at least one digit or numeric symbol
+    has_numeric = re.search(r'[\d~≈><.,/\-]', value_raw)
+
+    # Text-only values are not valid specs (e.g., "HWB", "- intake")
+    if not has_numeric:
+        return False
+
+    # If unit is same as value (e.g., "HWB" copied to both), skip it
+    if value_raw.strip() == unit_raw.strip():
+        return False
+
+    return True
+
+
 def extract_spec_blocks(ocr_data, table_rows, config):
     """Extract spec value blocks from table rows."""
     blocks = []
-    
+    skipped = 0
+
     for row in table_rows:
         spec_name = row['spec_name']
         value_raw = row['value_raw']
         unit_raw = row['unit_raw']
         notes = row['notes']
-        
+
+        # === FILTER NON-NUMERIC SPECS ===
+        if not is_valid_spec(value_raw, unit_raw):
+            skipped += 1
+            continue
+
         # Apply regex fixes
         value_clean = apply_regex_fixes(value_raw, config['regex_fixes'])
         unit_clean = canonicalize_unit(unit_raw, config['unit_canon'])
-        
+
         block = {
             'task': 'spec',
             'value': {
@@ -105,7 +133,10 @@ def extract_spec_blocks(ocr_data, table_rows, config):
             'ocr_excerpt': f"{spec_name}: {value_raw} {unit_raw} {notes}".strip()
         }
         blocks.append(block)
-    
+
+    if skipped > 0:
+        print(f"    [Filtered {skipped} non-numeric spec entries]")
+
     return blocks
 
 

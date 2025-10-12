@@ -1,6 +1,27 @@
-.venv/
+# Python
 __pycache__/
-work/
-*.log
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Work artifacts (large intermediate files)
+work/images_clean/
+work/ocr_raw/
+work/ocr_tables/
+work/blocks/
+
+# Keep only logs and final data
+!work/logs/
+
+# Jupyter
 .ipynb_checkpoints/
+*.ipynb
+
+# macOS
 .DS_Store
+
+# Secrets
+.env
+*.key

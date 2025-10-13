@@ -39,10 +39,19 @@ def main():
 
     args = parser.parse_args()
 
-    # Paths
+    # Paths - use simplified versions if they exist
     data_dir = Path('data')
-    train_file = data_dir / 'hf_train.jsonl'
-    val_file = data_dir / 'hf_val.jsonl'
+    train_simple = data_dir / 'hf_train_simple.jsonl'
+    val_simple = data_dir / 'hf_val_simple.jsonl'
+
+    # Use simplified versions if available (better for AutoTrain)
+    if train_simple.exists() and val_simple.exists():
+        train_file = train_simple
+        val_file = val_simple
+        print("📝 Using simplified dataset (without nested metadata)")
+    else:
+        train_file = data_dir / 'hf_train.jsonl'
+        val_file = data_dir / 'hf_val.jsonl'
 
     # Verify files exist
     if not train_file.exists() or not val_file.exists():
@@ -71,7 +80,8 @@ def main():
     # Show sample
     print(f"\n📝 Sample example:")
     sample = dataset['train'][0]
-    print(f"   Task: {sample['meta']['task']}")
+    if 'meta' in sample:
+        print(f"   Task: {sample['meta']['task']}")
     print(f"   User: {sample['messages'][0]['content'][:80]}...")
     print(f"   Assistant: {sample['messages'][1]['content'][:80]}...")
 

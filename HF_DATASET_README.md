@@ -2,12 +2,14 @@
 
 ## Overview
 
-This dataset contains **1,185 training examples** and **158 validation examples** in chat format, ready for instruction-tuning with HuggingFace Transformers.
+This dataset contains **1,877 training examples** and **235 validation examples** in chat format, ready for instruction-tuning with HuggingFace Transformers.
+
+**Enhanced with HTML tech specs**: Now includes 769 additional examples extracted from M3/320is technical specification HTML files, covering engine displacement, bore/stroke, compression ratio, power output, and other general specs that were missing from OCR-only pipeline.
 
 ## Files
 
-- `data/hf_train.jsonl` - 1,185 entries (778K) with class balancing
-- `data/hf_val.jsonl` - 158 entries (91K) no duplication
+- `data/hf_train.jsonl` - 1,877 entries (~1.2MB) with class balancing + HTML specs
+- `data/hf_val.jsonl` - 235 entries (~150KB) no duplication
 - `work/logs/hf_prep.log` - Full preparation report
 
 ## Format
@@ -51,35 +53,42 @@ All instructions are prefixed with task type for better model conditioning:
 
 ## Dataset Statistics
 
-### Training Set (1,185 entries)
+### Training Set (1,877 entries)
 
-**Task Distribution (Balanced)**:
-- Spec: 428 entries (36.1%)
-- Explanation: 306 entries (25.8%)
-- Procedure: 231 entries (19.5%)
-- Wiring: 220 entries (18.6%)
+**Sources**:
+- OCR from service manual images: 1,185 entries
+- HTML tech spec files (M3/320is): 692 entries
+- **Total**: 1,877 entries
 
-**Balance Ratio**: 1.95x (max/min) ✅
+**Task Distribution**:
+- Spec: ~1,100 entries (includes HTML general specs)
+- Explanation: ~300 entries
+- Procedure: ~230 entries
+- Wiring: ~220 entries
+- Troubleshooting: minimal
 
 **Token Statistics**:
 - Min: 14 tokens
-- Max: 267 tokens
-- Mean: 55.2 tokens
+- Max: ~300 tokens
+- Mean: ~50 tokens
 - Over 512 tokens: 0 (0.0%) ✅
 
-### Validation Set (158 entries)
+### Validation Set (235 entries)
 
-**Task Distribution (Original, No Duplication)**:
-- Spec: 110 entries (69.6%)
-- Explanation: 33 entries (20.9%)
-- Procedure: 10 entries (6.3%)
-- Wiring: 4 entries (2.5%)
-- Troubleshooting: 1 entry (0.6%)
+**Sources**:
+- OCR from service manual images: 158 entries
+- HTML tech spec files: 77 entries
+- **Total**: 235 entries
+
+**Task Distribution**:
+- Spec: majority (includes general engine specs)
+- Explanation, Procedure, Wiring: minority
+- Troubleshooting: 1 entry
 
 **Token Statistics**:
 - Min: 16 tokens
-- Max: 286 tokens
-- Mean: 40.1 tokens
+- Max: ~300 tokens
+- Mean: ~45 tokens
 - Over 512 tokens: 0 (0.0%) ✅
 
 ## Class Balancing
@@ -278,10 +287,11 @@ cat work/logs/hf_prep.log
 
 ## Known Limitations
 
-1. **Small dataset**: 1,185 training examples may lead to overfitting
+1. **Small dataset**: 1,877 training examples is still relatively small
 2. **No troubleshooting in train**: Only 1 example exists (in val set)
-3. **OCR errors**: Some text may be misread from scanned images
+3. **OCR errors**: Some text may be misread from scanned images (OCR portion only)
 4. **Fragmented procedures**: Multi-page procedures may be incomplete
+5. **HTML specs coverage**: Only M3 and 320is variants included
 
 ## Citation
 

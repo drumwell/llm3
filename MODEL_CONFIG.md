@@ -148,154 +148,32 @@ If you want to upgrade after initial results:
    ```
 3. **Re-run training**: Same pipeline, just slower
 
-## Colab Setup for Llama-3.2-3B
+## Training Setup
 
-### Dependencies:
+**Recommended: Use HuggingFace AutoTrain** for hassle-free training:
 
-```bash
-!pip install torch transformers datasets peft trl bitsandbytes accelerate tensorboard pyyaml
-```
+1. Upload dataset: `python scripts/09_upload_to_hf.py --repo your-username/bmw-e30-manual`
+2. Go to https://huggingface.co/autotrain
+3. Select your dataset and this model configuration
+4. Train in ~15-30 minutes on A100 (~$5-10)
 
-### Login to Hugging Face (for Llama access):
-
-```python
-from huggingface_hub import login
-login()  # Enter your HF token
-```
-
-### Training script:
-
-```python
-import yaml
-from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer
-import torch
-
-# Load config
-with open('config.yaml', 'r') as f:
-    config = yaml.safe_load(f)
-
-# Load dataset
-dataset = load_dataset('json', data_files={
-    'train': 'data/hf_train.jsonl',
-    'validation': 'data/hf_val.jsonl'
-})
-
-# Load tokenizer
-tokenizer = AutoTokenizer.from_pretrained(
-    config['huggingface']['model_name']
-)
-tokenizer.pad_token = tokenizer.eos_token
-
-# Format chat
-def format_chat(example):
-    return tokenizer.apply_chat_template(
-        example['messages'],
-        tokenize=False,
-        add_generation_prompt=False
-    )
-
-train_data = dataset['train'].map(
-    lambda x: {'text': format_chat(x)},
-    remove_columns=dataset['train'].column_names
-)
-val_data = dataset['validation'].map(
-    lambda x: {'text': format_chat(x)},
-    remove_columns=dataset['validation'].column_names
-)
-
-# QLoRA config
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16,
-    bnb_4bit_use_double_quant=True
-)
-
-# Load model
-model = AutoModelForCausalLM.from_pretrained(
-    config['huggingface']['model_name'],
-    quantization_config=bnb_config,
-    device_map="auto"
-)
-model = prepare_model_for_kbit_training(model)
-
-# LoRA config
-peft_config = LoraConfig(
-    r=config['qlora']['r'],
-    lora_alpha=config['qlora']['lora_alpha'],
-    lora_dropout=config['qlora']['lora_dropout'],
-    target_modules=config['qlora']['target_modules'],
-    bias=config['qlora']['bias'],
-    task_type=config['qlora']['task_type']
-)
-
-model = get_peft_model(model, peft_config)
-model.print_trainable_parameters()
-
-# Training args
-training_args = TrainingArguments(
-    output_dir="./checkpoints/llama-bmw",
-    num_train_epochs=config['training']['num_epochs'],
-    per_device_train_batch_size=config['training']['per_device_train_batch_size'],
-    per_device_eval_batch_size=config['training']['per_device_train_batch_size'],
-    gradient_accumulation_steps=config['training']['gradient_accumulation_steps'],
-    learning_rate=config['training']['learning_rate'],
-    warmup_ratio=config['training']['warmup_ratio'],
-    weight_decay=config['training']['weight_decay'],
-    optim=config['training']['optim'],
-    logging_steps=config['training']['logging_steps'],
-    save_strategy=config['training']['save_strategy'],
-    evaluation_strategy=config['training']['evaluation_strategy'],
-    save_total_limit=config['training']['save_total_limit'],
-    load_best_model_at_end=config['training']['load_best_model_at_end'],
-    metric_for_best_model=config['training']['metric_for_best_model'],
-    gradient_checkpointing=config['training']['gradient_checkpointing'],
-    fp16=config['training']['fp16'],
-    report_to="none"  # Disable wandb for Colab
-)
-
-# Trainer
-trainer = SFTTrainer(
-    model=model,
-    args=training_args,
-    train_dataset=train_data,
-    eval_dataset=val_data,
-    tokenizer=tokenizer,
-    dataset_text_field="text",
-    max_seq_length=config['huggingface']['max_seq_length'],
-    peft_config=peft_config
-)
-
-# Train
-print("Starting training...")
-trainer.train()
-
-# Save
-trainer.save_model("./models/llama-bmw-final")
-tokenizer.save_pretrained("./models/llama-bmw-final")
-print("Done!")
-```
+See `LEARNING_EXPERIMENTS.md` for detailed learning guide and experimentation tips.
 
 ## Summary
 
 ✅ **Updated to Llama-3.2-3B-Instruct**
-- Lower memory: ~8 GB (vs 16 GB)
-- Faster training: ~45-60 min total (vs 90-120 min)
-- Colab-friendly: Fits on T4 GPU
-- Still capable: Sufficient for your task complexity
+- Lower memory: ~8 GB (vs 16 GB for 7B models)
+- Faster training: ~15-30 min on A100
+- Better for small datasets (1,877 examples)
+- Sufficient for technical/factual tasks
 
 ✅ **Optimized training params**
 - Batch size: 8 (increased from 4)
 - Grad accumulation: 2 (decreased from 4)
-- Effective batch: 16 (same)
-- Faster training with same stability
+- Effective batch: 16 (maintains stability)
+- LoRA rank: 16 (good starting point)
 
-✅ **Ready for Colab**
-- All dependencies specified
-- Login instructions included
-- Expected training time: ~1 hour
-
-Next step: Upload dataset to Colab and run training! 🚀
+✅ **Ready for HuggingFace AutoTrain**
+- Upload dataset with script 09
+- Auto-configured QLoRA
+- Cost: ~$5-10 per training run

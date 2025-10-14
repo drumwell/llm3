@@ -28,13 +28,29 @@ hf_prep:
 extract_html:
 	python scripts/07_extract_html_specs.py
 
+autotrain_prep:
+	@echo "🔄 Converting to AutoTrain format..."
+	@python3 -c 'import json; from pathlib import Path; \
+	train_path = Path("data/hf_train.jsonl"); \
+	val_path = Path("data/hf_val.jsonl"); \
+	output_path = Path("data/hf_train_autotrain.jsonl"); \
+	combined = []; \
+	[combined.append({"text": f"User: {json.loads(line)[\"messages\"][0][\"content\"]}\\nAssistant: {json.loads(line)[\"messages\"][1][\"content\"]}"}) for line in open(train_path) if line.strip()]; \
+	train_count = len(combined); \
+	[combined.append({"text": f"User: {json.loads(line)[\"messages\"][0][\"content\"]}\\nAssistant: {json.loads(line)[\"messages\"][1][\"content\"]}"}) for line in open(val_path) if line.strip()]; \
+	output_path.write_text("\\n".join(json.dumps(e) for e in combined)); \
+	print(f"✅ Wrote {len(combined)} examples ({train_count} train + {len(combined)-train_count} val)")'
+
+synthetic_val:
+	python scripts/11_generate_synthetic_validation.py --train data/hf_train_autotrain.jsonl --output data/hf_val_synthetic.jsonl --count 250
+
 upload_hf:
 	@echo "📤 Uploading dataset to HuggingFace Hub..."
-	@echo "Usage: python scripts/09_upload_to_hf.py --repo your-username/bmw-e30-service-manual"
+	@echo "Usage: python scripts/09_upload_to_hf.py --repo drumwell/llm3"
 	@echo ""
 	@echo "First time setup:"
 	@echo "  1. Install: pip install datasets huggingface_hub"
 	@echo "  2. Login: huggingface-cli login"
-	@echo "  3. Run: python scripts/09_upload_to_hf.py --repo your-username/bmw-e30-service-manual"
+	@echo "  3. Run: python scripts/09_upload_to_hf.py --repo drumwell/llm3"
 
-all: inventory preprocess ocr blocks emit validate split hf_prep extract_html
+all: inventory preprocess ocr blocks emit validate split hf_prep extract_html autotrain_prep synthetic_val

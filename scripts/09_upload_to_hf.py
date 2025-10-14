@@ -39,19 +39,24 @@ def main():
 
     args = parser.parse_args()
 
-    # Paths - use simplified versions if they exist
+    # Paths - use AutoTrain format if available
     data_dir = Path('data')
-    train_simple = data_dir / 'hf_train_simple.jsonl'
-    val_simple = data_dir / 'hf_val_simple.jsonl'
+    train_autotrain = data_dir / 'hf_train_autotrain.jsonl'
+    val_synthetic = data_dir / 'hf_val_synthetic.jsonl'
 
-    # Use simplified versions if available (better for AutoTrain)
-    if train_simple.exists() and val_simple.exists():
-        train_file = train_simple
-        val_file = val_simple
-        print("📝 Using simplified dataset (without nested metadata)")
+    # Use AutoTrain flat text format (required for AutoTrain compatibility)
+    if train_autotrain.exists() and val_synthetic.exists():
+        train_file = train_autotrain
+        val_file = val_synthetic
+        print("📝 Using AutoTrain format (flat text with synthetic validation)")
+    elif train_autotrain.exists():
+        train_file = train_autotrain
+        val_file = data_dir / 'hf_val.jsonl'
+        print("⚠️  Using AutoTrain training but original validation")
     else:
         train_file = data_dir / 'hf_train.jsonl'
         val_file = data_dir / 'hf_val.jsonl'
+        print("⚠️  Using original nested format (may not work with AutoTrain)")
 
     # Verify files exist
     if not train_file.exists() or not val_file.exists():
@@ -80,10 +85,20 @@ def main():
     # Show sample
     print(f"\n📝 Sample example:")
     sample = dataset['train'][0]
-    if 'meta' in sample:
-        print(f"   Task: {sample['meta']['task']}")
-    print(f"   User: {sample['messages'][0]['content'][:80]}...")
-    print(f"   Assistant: {sample['messages'][1]['content'][:80]}...")
+    if 'text' in sample:
+        # AutoTrain flat text format
+        lines = sample['text'].split('\n', 1)
+        if len(lines) >= 2:
+            print(f"   {lines[0][:80]}...")
+            print(f"   {lines[1][:80]}...")
+        else:
+            print(f"   {sample['text'][:160]}...")
+    elif 'messages' in sample:
+        # Old nested format
+        if 'meta' in sample:
+            print(f"   Task: {sample['meta']['task']}")
+        print(f"   User: {sample['messages'][0]['content'][:80]}...")
+        print(f"   Assistant: {sample['messages'][1]['content'][:80]}...")
 
     # Create repo if it doesn't exist
     print(f"\n🚀 Uploading to HuggingFace Hub: {args.repo}")
@@ -113,8 +128,10 @@ def main():
     print(f"   1. Go to https://huggingface.co/autotrain")
     print(f"   2. Create new project → LLM Fine-tuning")
     print(f"   3. Select dataset: {args.repo}")
-    print(f"   4. Choose base model: meta-llama/Llama-3.2-3B-Instruct")
-    print(f"   5. Click 'Train' (cost: ~$5-10)")
+    print(f"   4. Choose base model: meta-llama/Llama-3.1-8B-Instruct")
+    print(f"   5. Column mapping: text_column = 'text'")
+    print(f"   6. Training: Use 'train' split for training, 'validation' for validation")
+    print(f"   7. Click 'Train' (cost: ~$5-10)")
 
 
 if __name__ == '__main__':

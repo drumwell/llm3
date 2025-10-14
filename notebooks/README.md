@@ -4,8 +4,10 @@
 
 This directory contains two notebooks for the complete BMW service manual finetuning workflow:
 
-1. **`finetune_qlora.ipynb`** - Complete QLoRA finetuning pipeline for Llama-3.2-3B
+1. **`finetune_qlora.ipynb`** - Complete QLoRA finetuning pipeline for Llama-3.1-8B
 2. **`test_inference.ipynb`** - Systematic testing and evaluation of the finetuned model
+
+> **Note**: These notebooks provide a free Colab alternative to HuggingFace AutoTrain. For the easiest training experience, use AutoTrain (see main README.md).
 
 ## Quick Start
 
@@ -14,16 +16,14 @@ This directory contains two notebooks for the complete BMW service manual finetu
 Create this folder structure in Google Drive:
 ```
 /MyDrive/bmw_finetuning/
-├── config.yaml
 └── data/
-    ├── hf_train.jsonl
-    └── hf_val.jsonl
+    ├── hf_train_autotrain.jsonl
+    └── hf_val_synthetic.jsonl
 ```
 
 **Files to upload**:
-- `config.yaml` (from project root)
-- `data/hf_train.jsonl` (1,185 examples, 778KB)
-- `data/hf_val.jsonl` (158 examples, 91KB)
+- `data/hf_train_autotrain.jsonl` (2,510 examples, 438KB)
+- `data/hf_val_synthetic.jsonl` (248 examples, 42KB)
 
 ### 2. Open in Google Colab
 
@@ -47,11 +47,11 @@ Create this folder structure in Google Drive:
 
 ### 4. Get HuggingFace Token
 
-You need a token to access Llama-3.2 (gated model):
+You need a token to access Llama-3.1 (gated model):
 
 1. Go to [HuggingFace Settings](https://huggingface.co/settings/tokens)
 2. Create a token with `read` permissions
-3. Accept Llama-3.2 license at [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
+3. Accept Llama-3.1 license at [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
 
 ### 5. Run Notebook
 
@@ -59,16 +59,15 @@ Run cells in order (Cell 1 → Cell 12):
 
 1. **Cell 1**: Install packages + login (enter HF token)
 2. **Cell 2**: Mount Google Drive
-3. **Cell 3**: Load config + datasets
-4. **Cell 4**: Load Llama-3.2-3B with QLoRA
-5. **Cell 5**: Format datasets
-6. **Cell 6**: Configure training
-7. **Cell 7**: Train! ⏱️ ~45-60 min on T4
-8. **Cell 8**: Evaluate
-9. **Cell 9**: Save model (local + Drive)
-10. **Cell 10**: Test inference
-11. **Cell 11**: (Optional) Push to HF Hub
-12. **Cell 12**: (Optional) Test loading from Hub
+3. **Cell 3**: Load datasets
+4. **Cell 4**: Load Llama-3.1-8B with QLoRA
+5. **Cell 5**: Configure training
+6. **Cell 6**: Train! ⏱️ ~2-3 hours on T4 (8B model)
+7. **Cell 7**: Evaluate
+8. **Cell 8**: Save model (local + Drive)
+9. **Cell 9**: Test inference
+10. **Cell 10**: (Optional) Push to HF Hub
+11. **Cell 11**: (Optional) Test loading from Hub
 
 ## Expected Results
 
@@ -140,11 +139,11 @@ Colab free tier disconnects after ~12 hours idle. To prevent:
    trainer.train(resume_from_checkpoint=True)
    ```
 
-### "Cannot access Llama-3.2"
+### "Cannot access Llama-3.1"
 
 You need to:
 1. Create HuggingFace account
-2. Accept Llama license: [meta-llama/Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)
+2. Accept Llama license: [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
 3. Create access token: [HF Settings](https://huggingface.co/settings/tokens)
 4. Enter token in Cell 1
 
@@ -153,10 +152,9 @@ You need to:
 Check your Google Drive structure:
 ```bash
 /MyDrive/bmw_finetuning/
-├── config.yaml          ← Must exist
 └── data/
-    ├── hf_train.jsonl   ← Must exist
-    └── hf_val.jsonl     ← Must exist
+    ├── hf_train_autotrain.jsonl   ← Must exist
+    └── hf_val_synthetic.jsonl     ← Must exist
 ```
 
 Run Cell 2 to verify all files are detected.
@@ -167,7 +165,7 @@ Run Cell 2 to verify all files are detected.
 
 1. **Use Colab Pro** (A100 GPU):
    - 3x faster than T4
-   - Training: ~15-20 min vs ~60 min
+   - Training: ~45-60 min vs ~2-3 hours (8B model)
 
 2. **Increase batch size** (if GPU allows):
    ```yaml
@@ -237,7 +235,7 @@ from peft import PeftModel
 
 # Load base model
 base_model = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
     device_map="auto"
 )
 
@@ -247,7 +245,7 @@ model = PeftModel.from_pretrained(
     "./bmw_e30_m3_service_manual"
 )
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B-Instruct")
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
 
 # Generate
 messages = [{"role": "user", "content": "[SPEC] What is the torque?"}]
@@ -267,7 +265,7 @@ model_id = "your-username/bmw-e30-m3-service-manual"
 
 # Load directly (adapter + base model)
 model = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
     device_map="auto"
 )
 model = PeftModel.from_pretrained(model, model_id)
@@ -286,7 +284,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 ## Resources
 
 - [QLoRA Paper](https://arxiv.org/abs/2305.14314) - Original QLoRA technique
-- [Llama 3.2 Model Card](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) - Base model info
+- [Llama 3.1 Model Card](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) - Base model info
 - [PEFT Docs](https://huggingface.co/docs/peft) - Parameter-Efficient Fine-Tuning
 - [TRL Docs](https://huggingface.co/docs/trl) - Transformer Reinforcement Learning
 - [Colab Guide](https://colab.research.google.com/notebooks/intro.ipynb) - Getting started with Colab

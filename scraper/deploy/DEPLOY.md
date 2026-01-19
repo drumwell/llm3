@@ -9,24 +9,41 @@ Deploy the vBulletin forum scraper to AWS using CloudFormation and GitHub Action
 ## Prerequisites
 
 ### 1. AWS CLI Setup
-- AWS CLI installed locally
-- Configured with credentials that can create IAM users: `aws configure`
 
-### 2. Create Dedicated IAM User for GitHub Actions
+```bash
+# Install AWS CLI if needed: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 
-**Why**: Don't use root or personal admin credentials in CI/CD. Create a dedicated user with only the permissions needed.
+# Configure with credentials that can create IAM users
+aws configure
+```
+
+### 2. Create S3 Bucket
+
+Choose a globally unique bucket name:
+
+```bash
+# Create the bucket (name must start with vlm3-scraper- for IAM policy to work)
+aws s3 mb s3://vlm3-scraper-YOUR-UNIQUE-ID --region us-east-1
+
+# Verify
+aws s3 ls | grep vlm3-scraper
+```
+
+### 3. Create IAM User for GitHub Actions
+
+Create a dedicated IAM user with least-privilege permissions:
 
 ```bash
 # Create the IAM user
 aws iam create-user --user-name github-actions-scraper
 
-# Create access keys (save these - you'll need them for GitHub secrets)
+# Create access keys - SAVE THE OUTPUT!
 aws iam create-access-key --user-name github-actions-scraper
 ```
 
-**Save the output** - you'll get `AccessKeyId` and `SecretAccessKey`. These go into GitHub secrets.
+**Important**: Save the `AccessKeyId` and `SecretAccessKey` from the output - you'll need these for GitHub secrets.
 
-Now attach the required permissions policy:
+Now create and attach the IAM policy:
 
 ```bash
 # Create the policy document
@@ -43,7 +60,12 @@ cat > /tmp/scraper-policy.json << 'EOF'
         "cloudformation:DeleteStack",
         "cloudformation:DescribeStacks",
         "cloudformation:DescribeStackEvents",
-        "cloudformation:GetTemplate"
+        "cloudformation:GetTemplate",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:GetTemplateSummary"
       ],
       "Resource": "arn:aws:cloudformation:*:*:stack/e30-forum-scraper/*"
     },
@@ -72,12 +94,13 @@ cat > /tmp/scraper-policy.json << 'EOF'
       "Resource": "*"
     },
     {
-      "Sid": "IAMPassRole",
+      "Sid": "IAM",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
         "iam:DeleteRole",
         "iam:GetRole",
+        "iam:GetRolePolicy",
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:AttachRolePolicy",
@@ -87,12 +110,24 @@ cat > /tmp/scraper-policy.json << 'EOF'
         "iam:AddRoleToInstanceProfile",
         "iam:RemoveRoleFromInstanceProfile",
         "iam:GetInstanceProfile",
-        "iam:PassRole"
+        "iam:PassRole",
+        "iam:TagRole"
       ],
       "Resource": [
         "arn:aws:iam::*:role/vlm3-scraper-*",
         "arn:aws:iam::*:instance-profile/vlm3-scraper-*"
       ]
+    },
+    {
+      "Sid": "IAMServiceLinkedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "spot.amazonaws.com"
+        }
+      }
     },
     {
       "Sid": "S3",
@@ -115,7 +150,8 @@ cat > /tmp/scraper-policy.json << 'EOF'
         "ssm:SendCommand",
         "ssm:GetCommandInvocation",
         "ssm:DescribeInstanceInformation",
-        "ssm:GetParameter"
+        "ssm:GetParameter",
+        "ssm:GetParameters"
       ],
       "Resource": "*"
     },
@@ -125,7 +161,9 @@ cat > /tmp/scraper-policy.json << 'EOF'
       "Action": [
         "logs:CreateLogGroup",
         "logs:DeleteLogGroup",
-        "logs:DescribeLogGroups"
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
       ],
       "Resource": "arn:aws:logs:*:*:log-group:/scraper/*"
     }
@@ -138,107 +176,86 @@ aws iam create-policy \
   --policy-name github-actions-scraper-policy \
   --policy-document file:///tmp/scraper-policy.json
 
-# Get your AWS account ID
+# Get your AWS account ID and attach the policy
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Attach policy to user
 aws iam attach-user-policy \
   --user-name github-actions-scraper \
   --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy
-```
 
-**Verify the user was created:**
-```bash
+# Verify
 aws iam get-user --user-name github-actions-scraper
 aws iam list-attached-user-policies --user-name github-actions-scraper
 ```
 
-### 3. Create S3 Bucket
-
-Choose a globally unique bucket name (e.g., `vlm3-scraper-results-<your-id>`):
-
-```bash
-# Create the bucket
-aws s3 mb s3://vlm3-scraper-results --region us-east-1
-
-# Verify it was created
-aws s3 ls | grep vlm3-scraper
-```
-
-**Note**: Bucket names must be globally unique. If the name is taken, add a suffix like `-123` or your initials.
-
-### 4. Forum URL
-- Have the target forum URL ready for configuration
-
 ---
 
-## Deployment Steps
+## Deployment
 
-### Step 1: Configure GitHub Secrets
+### Step 1: Configure GitHub Repository Secrets
 
-Go to: **GitHub repo → Settings → Secrets and variables → Actions**
+Go to: **GitHub repo → Settings → Secrets and variables → Actions → Repository secrets**
 
-Add these **required** secrets:
+Add these secrets:
 
 | Secret Name | Value |
 |-------------|-------|
-| `AWS_ACCESS_KEY_ID` | AccessKeyId from step 2 |
-| `AWS_SECRET_ACCESS_KEY` | SecretAccessKey from step 2 |
+| `AWS_ACCESS_KEY_ID` | AccessKeyId from IAM user creation |
+| `AWS_SECRET_ACCESS_KEY` | SecretAccessKey from IAM user creation |
 | `AWS_REGION` | `us-east-1` (or your preferred region) |
-| `S3_BUCKET` | Your S3 bucket name (without `s3://`) |
+| `S3_BUCKET` | Your S3 bucket name (e.g., `vlm3-scraper-YOUR-ID`) |
 
 ### Step 2: Deploy Infrastructure
 
-1. Go to: **GitHub repo → Actions → "Forum Scraper" workflow**
+1. Go to: **GitHub repo → Actions → "Forum Scraper"**
 2. Click **"Run workflow"**
 3. Select:
    - **Action**: `deploy`
    - **Instance type**: `t3.small` (default)
 4. Click **"Run workflow"**
 
-This deploys:
+This creates:
 - EC2 Spot instance (Amazon Linux 2023)
-- IAM role with S3/SSM/CloudWatch permissions
-- Security group (HTTPS/HTTP egress only)
+- IAM role for the instance
+- Security group (HTTPS/HTTP egress)
 - CloudWatch log group
-- Automatic S3 sync cron (every 6 hours)
+- Automatic S3 sync (every 6 hours)
 
-### Step 3: Configure Forum URL on Instance
+### Step 3: Configure Forum URL
 
-After deployment completes, connect via SSM:
+After deployment succeeds, connect to the instance and set the forum URL:
+
 ```bash
-# Get instance ID from CloudFormation outputs
+# Get instance ID
 INSTANCE_ID=$(aws cloudformation describe-stacks \
   --stack-name e30-forum-scraper \
   --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" \
   --output text)
 
-# Connect to instance
+# Connect via SSM
 aws ssm start-session --target $INSTANCE_ID
 ```
 
-On the instance, set the forum URL:
+On the instance:
 ```bash
 cd /home/ec2-user/scraper
 echo "E30M3_FORUM_URL=https://your-forum-url.com" > .env
 ```
 
-### Step 4: Start the Scraper
+### Step 4: Run the Scraper
 
-**Option A: Via GitHub Actions**
+**Via GitHub Actions:**
 1. Go to Actions → "Forum Scraper"
-2. Run workflow with:
+2. Run workflow:
    - **Action**: `start`
-   - **Stage**: `discover` (first run) or `all` (full scrape)
+   - **Stage**: `discover` (first run to find all forums)
+3. After discover completes, run again with `stage=all` for full scrape
 
-**Option B: Via SSM (manual)**
+**Or manually via SSM:**
 ```bash
-aws ssm start-session --target $INSTANCE_ID
-# Then on instance:
 cd /home/ec2-user/scraper
 source .venv/bin/activate
-python scraper/01_discover_forums.py  # First: discover forums
-python scraper/run_test_scrape.py --stage all --forum-id <ID>  # Full scrape
+python scraper/01_discover_forums.py          # Find forums
+python scraper/run_test_scrape.py --stage all # Full scrape
 ```
 
 ---
@@ -251,94 +268,135 @@ python scraper/run_test_scrape.py --stage all --forum-id <ID>  # Full scrape
 | `threads` | `02_scrape_threads.py` | Get thread listings |
 | `posts` | `03_scrape_posts.py` | Scrape post content |
 | `images` | `04_download_images.py` | Download attached images |
-| `all` | `run_test_scrape.py` | Run all stages |
+| `all` | `run_test_scrape.py` | Run all stages sequentially |
 
 ---
 
-## Management Commands
+## Management
 
 ### Check Status
 ```bash
-# Via GitHub Actions: Run workflow with action=status
-# Or via CLI:
-aws ssm send-command --instance-ids $INSTANCE_ID \
-  --document-name "AWS-RunShellScript" \
-  --parameters 'commands=["pgrep -a python", "tail -20 /home/ec2-user/scraper/forum_archive/logs/scraper.log"]'
+# Via GitHub Actions: action=status
+# Or CLI:
+INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name e30-forum-scraper \
+  --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text)
+aws ssm start-session --target $INSTANCE_ID
+# Then: tail -f /home/ec2-user/scraper/forum_archive/logs/scraper.log
 ```
 
-### Manual S3 Sync
+### Sync to S3
 ```bash
-# Via GitHub Actions: Run workflow with action=sync
+# Via GitHub Actions: action=sync
+# Automatic sync runs every 6 hours via cron
 ```
 
-### Stop Scraper (graceful)
+### Stop Scraper
 ```bash
-# Via GitHub Actions: Run workflow with action=stop
-# Sends SIGINT, waits, then syncs to S3
+# Via GitHub Actions: action=stop
+# Sends SIGINT for graceful shutdown, then syncs to S3
 ```
 
 ### Teardown (delete everything)
 ```bash
-# Via GitHub Actions: Run workflow with action=teardown
-# Syncs final results to S3, then deletes stack
+# Via GitHub Actions: action=teardown
+# Syncs final results to S3, then deletes the CloudFormation stack
 ```
 
 ---
 
 ## File Locations
 
-**On EC2 instance:**
-- Code: `/home/ec2-user/scraper/`
-- Output: `/home/ec2-user/scraper/forum_archive/`
-- Logs: `/home/ec2-user/scraper/forum_archive/logs/scraper.log`
-- Checkpoints: `/home/ec2-user/scraper/forum_archive/checkpoints/`
+**On EC2:**
+```
+/home/ec2-user/scraper/
+├── forum_archive/
+│   ├── data/           # Scraped data (JSON)
+│   ├── raw/            # Raw HTML
+│   ├── checkpoints/    # Resume state
+│   └── logs/           # scraper.log
+└── .env                # Forum URL config
+```
 
 **On S3:**
-- Results: `s3://YOUR-BUCKET/forum_archive/`
-- Logs: `s3://YOUR-BUCKET/logs/`
+```
+s3://YOUR-BUCKET/
+├── forum_archive/      # Synced data
+└── logs/               # Archived logs
+```
 
 ---
 
-## Verification Checklist
+## Troubleshooting
 
-After deployment, verify:
-- [ ] CloudFormation stack shows CREATE_COMPLETE
-- [ ] Can connect via SSM: `aws ssm start-session --target $INSTANCE_ID`
-- [ ] Python environment works: `source .venv/bin/activate && python --version`
-- [ ] Forum URL is set: `cat .env`
-- [ ] Discover stage completes: `python scraper/01_discover_forums.py`
+### Deployment Fails
 
----
+Check CloudFormation events:
+```bash
+aws cloudformation describe-stack-events --stack-name e30-forum-scraper \
+  --query 'StackEvents[?ResourceStatus==`CREATE_FAILED`].[LogicalResourceId,ResourceStatusReason]' \
+  --output table
+```
 
-## Notes
+### Delete Failed Stack
 
-- **Spot interruption**: Instance uses persistent spot with stop behavior - will resume when capacity available
-- **Checkpointing**: Scraper saves progress every 10 items, auto-resumes on restart
-- **Rate limiting**: 1.5-2.5s delay between requests (configurable in `scraper_config.yaml`)
-- **S3 sync**: Automatic every 6 hours via cron, or manual via GitHub Actions
+If stack is in ROLLBACK_COMPLETE state, delete it before retrying:
+```bash
+aws cloudformation delete-stack --stack-name e30-forum-scraper
+aws cloudformation wait stack-delete-complete --stack-name e30-forum-scraper
+```
+
+### IAM Permission Errors
+
+If you see "not authorized to perform" errors, update the IAM policy:
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+# Edit /tmp/scraper-policy.json with the missing permission, then:
+aws iam create-policy-version \
+  --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy \
+  --policy-document file:///tmp/scraper-policy.json \
+  --set-as-default
+```
+
+**Note**: AWS limits you to 5 policy versions. Delete old versions if needed:
+```bash
+aws iam list-policy-versions --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy
+aws iam delete-policy-version --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy --version-id v1
+```
 
 ---
 
 ## Cleanup
 
-To remove all AWS resources when done:
+Remove all AWS resources when done:
 
 ```bash
-# Via GitHub Actions
-# Run workflow with action=teardown
-
+# 1. Teardown via GitHub Actions (recommended - syncs data first)
 # Or manually:
 aws cloudformation delete-stack --stack-name e30-forum-scraper
 aws cloudformation wait stack-delete-complete --stack-name e30-forum-scraper
 
-# Optionally delete the IAM user (if no longer needed)
+# 2. Delete IAM user (optional)
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 aws iam detach-user-policy --user-name github-actions-scraper \
   --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy
+# Delete all policy versions except default, then delete policy
+aws iam list-policy-versions --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy
 aws iam delete-policy --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/github-actions-scraper-policy
+# List and delete access keys
+aws iam list-access-keys --user-name github-actions-scraper
 aws iam delete-access-key --user-name github-actions-scraper --access-key-id <KEY_ID>
 aws iam delete-user --user-name github-actions-scraper
 
-# S3 bucket (if you want to delete data too)
+# 3. Delete S3 bucket (optional - if you want to delete data)
 aws s3 rb s3://YOUR-BUCKET --force
 ```
+
+---
+
+## Notes
+
+- **Spot interruption**: Uses persistent spot with stop behavior - resumes when capacity available
+- **Checkpointing**: Scraper saves progress every 10 items, auto-resumes on restart
+- **Rate limiting**: 1.5-2.5s delay between requests (configurable in `scraper_config.yaml`)
+- **VPC**: Auto-detects default VPC during deployment
+- **First-time Spot users**: The IAM policy includes permission to create the EC2 Spot service-linked role

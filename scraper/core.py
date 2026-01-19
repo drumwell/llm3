@@ -190,11 +190,6 @@ def load_forum_config(config_path: Path, forum_id: Optional[str] = None) -> Foru
     image_cfg = {**defaults.get("images", {}), **forum_cfg.get("images", {})}
     image_skip_patterns = image_cfg.get("skip_patterns", [])
 
-    # Storage path - include domain from base_url for organization
-    storage_base_dir = Path(forum_cfg.get("storage", {}).get("base_dir", "data_src/forum"))
-    domain = urlparse(base_url).netloc if base_url else forum_id
-    storage_base = storage_base_dir / domain
-
     # Base URL: check environment variable first, then config
     # Environment variable name can be specified in config (e.g., "E30M3_FORUM_URL")
     base_url_env = forum_cfg.get("base_url_env", f"{forum_id.upper()}_FORUM_URL")
@@ -204,6 +199,11 @@ def load_forum_config(config_path: Path, forum_id: Optional[str] = None) -> Foru
             f"Forum '{forum_id}' has no base_url configured. "
             f"Set the {base_url_env} environment variable or add base_url to config."
         )
+
+    # Storage path - include domain from base_url for organization
+    storage_base_dir = Path(forum_cfg.get("storage", {}).get("base_dir", "data_src/forum"))
+    domain = urlparse(base_url).netloc if base_url else forum_id
+    storage_base = storage_base_dir / domain
 
     return ForumConfig(
         name=forum_cfg.get("name", forum_id),

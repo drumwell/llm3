@@ -190,8 +190,10 @@ def load_forum_config(config_path: Path, forum_id: Optional[str] = None) -> Foru
     image_cfg = {**defaults.get("images", {}), **forum_cfg.get("images", {})}
     image_skip_patterns = image_cfg.get("skip_patterns", [])
 
-    # Storage path
-    storage_base = Path(forum_cfg.get("storage", {}).get("base_dir", f"data_src/forum"))
+    # Storage path - include domain from base_url for organization
+    storage_base_dir = Path(forum_cfg.get("storage", {}).get("base_dir", "data_src/forum"))
+    domain = urlparse(base_url).netloc if base_url else forum_id
+    storage_base = storage_base_dir / domain
 
     # Base URL: check environment variable first, then config
     # Environment variable name can be specified in config (e.g., "E30M3_FORUM_URL")

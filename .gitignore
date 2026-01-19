@@ -11,6 +11,10 @@ work/
 todo
 *~
 
+# Scraped forum data (large, not committed)
+data_src/forum/
+forum_archive/
+
 # Keep only logs and final data
 !work/logs/
 

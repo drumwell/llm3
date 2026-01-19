@@ -1,218 +1,215 @@
-# BMW E30 M3 Service Manual - VLM Training Dataset
+# vlm3 - BMW E30 M3 Vision Language Model Project
 
-> Convert scanned service manual pages into Vision-Language Model (VLM) training data using Claude API for Q&A generation directly from images.
+Build a Vision-Language Model that understands BMW E30 M3 service documentation. This project provides the complete stack: scraping community knowledge, processing service manuals into training data, and fine-tuning VLMs.
 
-## Overview
+## Project Status
 
-This pipeline generates training data for fine-tuning Vision-Language Models on automotive technical knowledge. Instead of traditional OCR-based text extraction, it uses Claude's vision capabilities to generate context-aware Q&A pairs directly from service manual images—preserving visual semantics like diagrams, callouts, and spatial relationships that text extraction loses.
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Data Pipeline** | ✅ Complete | 12,410 Q&A pairs from service manuals |
+| **Scraper** | ✅ Implemented | Web scraper for community knowledge |
+| **Training** | ⚙️ Config Only | Qwen2-VL-7B LoRA fine-tuning ready |
+| **Evaluation** | 📋 Planned | DeepEval framework with Claude-as-judge |
 
 ## Quick Start
 
-### 1. Setup
+### Environment Setup
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Required for Q&A generation (Stage 3-4)
-export ANTHROPIC_API_KEY=your_key_here
+export ANTHROPIC_API_KEY=your_key  # Required for pipeline Stages 3-4
 ```
 
-### 2. Run Pipeline
+### Run Data Pipeline
 
 ```bash
-# Run full pipeline
-make all
-
-# This runs:
-make inventory        # Stage 1: Catalog source files
-make prepare          # Stage 2: Convert PDFs, validate images
-make classify         # Stage 3: Classify pages, parse indices (Claude API)
-make generate-qa      # Stage 4: Generate Q&A pairs (Claude API)
-make quality-control  # Stage 5: Filter and deduplicate
-make emit             # Stage 6a: Emit VLM JSONL
-make validate         # Stage 6b: Validate dataset
+make all      # Full pipeline: inventory → prepare → classify → generate → filter → emit
+make status   # Check progress
 ```
 
-**Output**:
-- `training_data/vlm_train.jsonl` - Training examples (90%)
-- `training_data/vlm_val.jsonl` - Validation examples (10%)
-- `training_data/images/` - Referenced images
+**Output**: `training_data/vlm_train.jsonl` (11,154 examples) + `training_data/vlm_val.jsonl` (1,256 examples)
 
-### 3. Upload to HuggingFace
+### Run Scraper
 
 ```bash
-huggingface-cli login
-make upload
-# Or: python scripts/09_upload_vlm.py --repo your-username/vlm3
+# See scraper/README.md for full usage
+python scraper/01_discover_forums.py    # Discover site structure
+python scraper/02_scrape_threads.py     # Scrape thread listings
+python scraper/03_scrape_posts.py       # Download post content
+python scraper/04_download_images.py    # Download images
 ```
 
-## Pipeline Architecture
+## Project Structure
+
+```
+vlm3/
+├── pipeline/                 # Data processing pipeline
+│   ├── scripts/              # Stages 01-09
+│   ├── tests/                # pytest suite
+│   └── config.yaml           # Pipeline configuration
+│
+├── scraper/                  # Web scraper for community knowledge
+│   ├── 01_discover_forums.py # Discover site structure
+│   ├── 02_scrape_threads.py  # Scrape thread listings
+│   ├── 03_scrape_posts.py    # Download post content
+│   ├── 04_download_images.py # Download images
+│   ├── core.py               # HTTP client, checkpointing
+│   ├── parser.py             # HTML parsing
+│   └── tests/                # Scraper tests
+│
+├── training/                 # VLM fine-tuning (⚙️)
+│   └── configs/
+│       └── lora_qwen2vl.yaml # LoRA training config
+│
+├── eval/                     # Model evaluation (📋)
+│   └── benchmarks/
+│       └── manual_probes.json
+│
+├── data_src/                 # Source materials (read-only)
+├── work/                     # Pipeline intermediates
+├── training_data/            # Final outputs
+├── forum_archive/            # Scraped web data
+│
+├── Makefile                  # Pipeline orchestration
+└── specs/                    # Project specifications
+```
+
+---
+
+## Data Pipeline
+
+Converts scanned service manual pages into VLM training data using Claude's vision capabilities—no OCR needed.
+
+### Pipeline Flow
 
 ```
 data_src/ (JPG/PDF/HTML)
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 1: INVENTORY                                          │
-│ 01_inventory.py → work/inventory.csv                        │
-│ Catalogs all source files (JPG, PDF, HTML)                  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 2: SOURCE PREPARATION                                 │
-│ 02_prepare_sources.py → work/inventory_prepared.csv         │
-│ Converts PDFs to JPG, validates all images                  │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 3: CLASSIFICATION & INDEX PARSING (Claude API)        │
-│ 03_classify_pages.py → work/classified/pages.csv            │
-│                      → work/indices/*.json                  │
-│ Classifies content type, extracts repair codes from indices │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 4: Q&A GENERATION                                     │
-│ 04a_generate_qa_images.py → work/qa_raw/*.json (Claude API) │
-│ 04b_generate_qa_html.py   → work/qa_raw/*.json (no API)     │
-│ Generates Q&A pairs with source-specific prompts            │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 5: QUALITY CONTROL                                    │
-│ 05_filter_qa.py      → work/qa_filtered/*.json              │
-│ 06_deduplicate_qa.py → work/qa_unique/*.json                │
-│ Filters low-quality, removes duplicates                     │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Stage 6: EMIT & VALIDATE                                    │
-│ 07_emit_vlm_dataset.py → training_data/vlm_train.jsonl               │
-│                        → training_data/vlm_val.jsonl                 │
-│ 08_validate_vlm.py     → work/logs/vlm_qa_report.md         │
-│ 09_upload_vlm.py       → HuggingFace Hub                    │
-└─────────────────────────────────────────────────────────────┘
+    ↓
+Stage 1: Inventory    → work/inventory.csv
+Stage 2: Prepare      → work/inventory_prepared.csv (PDF→JPG)
+Stage 3: Classify     → work/classified/pages.csv [Claude API]
+Stage 4: Generate Q&A → work/qa_raw/*.json [Claude API]
+Stage 5: Filter       → work/qa_filtered/*.json → work/qa_unique/*.json
+Stage 6: Emit         → training_data/vlm_train.jsonl + vlm_val.jsonl
 ```
 
-## Source Materials
+### Source Materials
 
-| Source | Format | Handling |
-|--------|--------|----------|
-| Service Manual sections (00-97) | JPG scans | Main pipeline with procedure/spec prompts |
-| 1990 Electrical Troubleshooting Manual | JPG scans | Wiring-specific prompts |
-| Bosch Motronic ML 3-1 | JPG scans | ECU technical prompts |
-| M3-techspec.html, 320is-techspec.html | HTML | Direct parsing, no API needed |
-| Getrag 265/5 Rebuild PDF | PDF | Converted to JPG in Stage 2 |
+| Source | Format | Content |
+|--------|--------|---------|
+| Service Manual (00-97) | JPG scans | Procedures, specs, diagrams |
+| Electrical Manual | JPG scans | Wiring, pinouts, flowcharts |
+| Bosch Motronic ML 3-1 | JPG scans | ECU signals, parameters |
+| Getrag 265/5 Rebuild | PDF | Transmission procedures |
+| Tech specs (HTML) | HTML | Vehicle specifications |
 
-## Output Format
+### Output Format
 
-**VLM Training Record** (`training_data/vlm_train.jsonl`):
 ```json
 {
   "image": "images/21-03.jpg",
   "conversations": [
-    {"role": "user", "content": "What should I visually inspect the clutch pressure plate for?"},
-    {"role": "assistant", "content": "Visually inspect the clutch for cracks, wear, and burnt spots. The pressure contact surface must be level."}
+    {"role": "user", "content": "What should I inspect the clutch for?"},
+    {"role": "assistant", "content": "Inspect for cracks, wear, and burnt spots..."}
   ],
   "metadata": {
     "page_id": "21-03",
-    "section_id": "21",
     "section_name": "Clutch",
-    "source_type": "service_manual",
     "content_type": "procedure",
     "question_type": "inspection"
   }
 }
 ```
 
-**Question Types**:
-- `factual` - Specific values, part names, specifications
-- `procedural` - How to perform tasks, step sequences
-- `visual` - Diagram callouts, component identification
-- `inspection` - What to look for, acceptance criteria
-- `tool` - Required tools and supplies
-- `safety` - Cautions and warnings
-- `navigation` - Repair codes, page references
-
-## Make Targets
+### Make Targets
 
 | Target | Description |
 |--------|-------------|
-| `make all` | Run complete pipeline (Stages 1-6) |
-| `make status` | Show pipeline progress |
-| `make quick` | Skip Stages 1-2 (sources already prepared) |
+| `make all` | Complete pipeline |
+| `make status` | Show progress |
+| `make quick` | Skip Stages 1-2 |
 | `make regen-qa` | Regenerate from Stage 4 |
 | `make refilter` | Rerun from Stage 5 |
-| `make finalize` | Just emit and validate |
-| `make clean` | Clean intermediate files |
-| `make clean-all` | Clean everything including outputs |
+| `make clean` | Clean intermediates |
 
-## Project Structure
+---
 
-```
-vlm3/
-├── pipeline/                # Data pipeline
-│   ├── scripts/             # Pipeline scripts (01-09)
-│   ├── tests/               # pytest test suite
-│   └── config.yaml          # Pipeline configuration
-│
-├── training/                # VLM fine-tuning (future)
-│   ├── configs/
-│   │   └── lora_qwen2vl.yaml
-│   └── README.md
-│
-├── eval/                    # Model evaluation (future)
-│   ├── benchmarks/
-│   │   └── manual_probes.json
-│   └── README.md
-│
-├── scraping/                # Data collection (future)
-│   └── README.md
-│
-├── specs/                   # Project-wide specifications
-│   └── training_eval_plan.md
-│
-├── data_src/                # Source images, PDFs, HTML (read-only)
-│   ├── 00 - Maintenance/
-│   ├── 11 - Engine/
-│   ├── 21 - Clutch/
-│   ├── ...
-│   ├── M3-techspec.html
-│   └── 320is-techspec.html
-│
-├── work/                    # Intermediate artifacts
-│   ├── inventory.csv
-│   ├── classified/pages.csv
-│   ├── indices/*.json
-│   ├── qa_raw/, qa_filtered/, qa_unique/
-│   └── logs/
-│
-├── training_data/           # Final outputs
-│   ├── vlm_train.jsonl
-│   ├── vlm_val.jsonl
-│   └── images/
-│
-├── Makefile                 # Orchestration
-├── CLAUDE.md                # Claude Code project brief
-└── README.md
+## Scraper
+
+Collects E30 M3 community knowledge from vBulletin forums for additional training data.
+
+### Features
+
+- **Rate limiting**: Polite scraping with randomized 1.5-2.5s delays
+- **Checkpoint/resume**: Stop and restart without losing progress
+- **Structured storage**: Raw HTML + parsed JSON
+- **Image downloading**: Downloads embedded images with references
+
+### Usage
+
+```bash
+# Discover forum structure
+python scraper/01_discover_forums.py
+
+# Scrape specific forum
+python scraper/02_scrape_threads.py --forum-id 42
+python scraper/03_scrape_posts.py --forum-id 42
+python scraper/04_download_images.py --forum-id 42
+
+# Or scrape everything
+python scraper/02_scrape_threads.py --all
+python scraper/03_scrape_posts.py --all
+python scraper/04_download_images.py --all
 ```
 
-## Configuration
+See `scraper/README.md` for detailed usage and configuration.
 
-All settings in `pipeline/config.yaml`:
+---
 
-- **API**: Model selection, rate limits, retries
-- **Classification**: Content type patterns, source detection
-- **Generation**: Questions per page by type, skip patterns, cost controls
-- **Filters**: Answer length, generic patterns, similarity thresholds
-- **Output**: Train/val split ratio, image handling mode
+## Training Infrastructure
+
+Fine-tune Qwen2-VL-7B-Instruct using LoRA on Modal GPU cloud.
+
+### Configuration (`training/configs/lora_qwen2vl.yaml`)
+
+| Parameter | Value |
+|-----------|-------|
+| Base Model | Qwen2-VL-7B-Instruct |
+| Method | LoRA (rank 64, alpha 128) |
+| Quantization | 4-bit (nf4, bfloat16) |
+| Training | 3 epochs, batch 16 (4×4 accumulation) |
+| Learning Rate | 2e-4, cosine decay |
+| GPU | A100-80GB (~$8-16 estimated cost) |
+
+### Planned Scripts
+
+- `prepare_dataset.py` - Convert JSONL → HuggingFace Dataset
+- `modal_train.py` - LoRA training on Modal
+- `modal_serve.py` - Inference endpoint
+
+---
+
+## Evaluation (Planned)
+
+DeepEval-based framework using Claude-as-judge.
+
+### Planned Metrics
+
+| Metric | Purpose | Threshold |
+|--------|---------|-----------|
+| AnswerRelevancy | Does answer address question? | >0.7 |
+| Faithfulness | Is answer grounded in image? | >0.7 |
+| NumericExactMatch | Torque specs, measurements | >0.85 |
+| KeywordPresence | Required technical terms | >0.80 |
+
+### Approach
+
+1. Baseline evaluation on unmodified Qwen2-VL-7B
+2. Post-training evaluation
+3. Manual probe benchmarks (20-30 critical questions)
+
+---
 
 ## Requirements
 
@@ -221,29 +218,32 @@ pip install -r requirements.txt
 ```
 
 Key dependencies:
-- `anthropic` - Claude API for classification and Q&A generation
+- `anthropic` - Claude API for classification/Q&A
 - `pillow`, `opencv-python` - Image processing
-- `pdf2image` - PDF to JPG conversion
+- `pdf2image` - PDF conversion
 - `sentence-transformers` - Semantic deduplication
-- `pyyaml` - Configuration
-- `datasets`, `huggingface_hub` - Dataset upload
+- `requests`, `beautifulsoup4` - Web scraping
+- `datasets`, `huggingface_hub` - Dataset management
+
+---
 
 ## Testing
 
 ```bash
-pytest pipeline/tests/                      # Run all tests
-pytest pipeline/tests/test_01_inventory.py  # Single test file
-pytest pipeline/tests/ -k "classify"        # Tests matching pattern
-pytest pipeline/tests/ -v                   # Verbose output
+pytest pipeline/tests/           # Pipeline tests
+pytest scraper/tests/            # Scraper tests
+pytest -v                        # Verbose
+pytest -k "classify"             # Pattern match
 ```
+
+---
 
 ## License
 
-This dataset is for research/educational purposes only. Check original BMW service manual licensing.
+Research/educational purposes. Check original BMW service manual licensing.
 
 ## Acknowledgments
 
-- BMW E30 M3 service manual (original source)
+- BMW E30 M3 service manuals
 - Anthropic Claude for vision-based Q&A generation
-- HuggingFace for dataset hosting
-- BMW enthusiast community
+- E30 M3 enthusiast community

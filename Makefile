@@ -9,7 +9,7 @@ SECT_FILTER?=
 
 inventory:
 	@echo "📋 Stage 1: Cataloging source files..."
-	python scripts/01_inventory.py \
+	python pipeline/scripts/01_inventory.py \
 		--data-src data_src \
 		--output work/inventory.csv \
 		--section-filter "$(SECT_FILTER)"
@@ -20,7 +20,7 @@ inventory:
 
 prepare:
 	@echo "🔄 Stage 2: Converting PDFs and validating images..."
-	python scripts/02_prepare_sources.py \
+	python pipeline/scripts/02_prepare_sources.py \
 		--inventory work/inventory.csv \
 		--data-src data_src \
 		--output work/inventory_prepared.csv \
@@ -32,16 +32,16 @@ prepare:
 
 classify:
 	@echo "🏷️  Stage 3: Classifying pages and parsing indices..."
-	python scripts/03_classify_pages.py \
+	python pipeline/scripts/03_classify_pages.py \
 		--inventory work/inventory_prepared.csv \
 		--output-csv work/classified/pages.csv \
 		--output-indices work/indices \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 # Optional: Validate classification results
 classify-validate:
 	@echo "✅ Validating classification results..."
-	python scripts/03b_validate_classification.py \
+	python pipeline/scripts/03b_validate_classification.py \
 		--classified work/classified/pages.csv \
 		--indices work/indices \
 		--output work/logs/classification_report.md
@@ -52,19 +52,19 @@ classify-validate:
 
 generate-qa-images:
 	@echo "🤖 Stage 4a: Generating Q&A from images via Claude API..."
-	python scripts/04a_generate_qa_images.py \
+	python pipeline/scripts/04a_generate_qa_images.py \
 		--classified work/classified/pages.csv \
 		--indices work/indices \
 		--data-src data_src \
 		--output work/qa_raw \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 generate-qa-html:
 	@echo "📄 Stage 4b: Generating Q&A from HTML specs..."
-	python scripts/04b_generate_qa_html.py \
+	python pipeline/scripts/04b_generate_qa_html.py \
 		--data-src data_src \
 		--output work/qa_raw \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 generate-qa: generate-qa-images generate-qa-html
 
@@ -74,21 +74,21 @@ generate-qa: generate-qa-images generate-qa-html
 
 filter-qa:
 	@echo "🔍 Stage 5a: Filtering Q&A for quality..."
-	python scripts/05_filter_qa.py \
+	python pipeline/scripts/05_filter_qa.py \
 		--input work/qa_raw \
 		--output work/qa_filtered \
 		--log work/logs/qa_filtered_out.csv \
 		--report work/logs/qa_filter_report.md \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 deduplicate-qa:
 	@echo "🧹 Stage 5b: Deduplicating Q&A pairs..."
-	python scripts/06_deduplicate_qa.py \
+	python pipeline/scripts/06_deduplicate_qa.py \
 		--input work/qa_filtered \
 		--output work/qa_unique \
 		--log work/logs/qa_duplicates.csv \
 		--report work/logs/qa_dedup_report.md \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 quality-control: filter-qa deduplicate-qa
 
@@ -98,31 +98,31 @@ quality-control: filter-qa deduplicate-qa
 
 emit:
 	@echo "📝 Stage 6a: Emitting VLM training dataset..."
-	python scripts/07_emit_vlm_dataset.py \
+	python pipeline/scripts/07_emit_vlm_dataset.py \
 		--qa work/qa_unique \
 		--data-src data_src \
 		--output training_data \
 		--report work/logs/emit_report.md \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 validate:
 	@echo "✅ Stage 6b: Validating VLM dataset..."
-	python scripts/08_validate_vlm.py \
+	python pipeline/scripts/08_validate_vlm.py \
 		--train training_data/vlm_train.jsonl \
 		--val training_data/vlm_val.jsonl \
 		--images training_data \
 		--output work/logs/vlm_qa_report.md \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 upload:
 	@echo "📤 Stage 6c: Uploading to HuggingFace Hub..."
-	python scripts/09_upload_vlm.py \
+	python pipeline/scripts/09_upload_vlm.py \
 		--train training_data/vlm_train.jsonl \
 		--val training_data/vlm_val.jsonl \
 		--images training_data/images \
 		--repo drumwell/vlm3 \
 		--report work/logs/upload_report.md \
-		--config config.yaml
+		--config pipeline/config.yaml
 
 # ============================================================================
 # CONVENIENCE TARGETS

@@ -1,6 +1,7 @@
 # VLM Fine-tuning & Evaluation Plan
 
-> Draft plan for post-pipeline work. Do not implement until pipeline stages 1-9 complete successfully.
+> Implementation plan for Phase 2: Training and evaluation infrastructure.
+> **Phase 1 (reorganization) is complete.** The project has been restructured as documented below.
 
 ## Overview
 
@@ -11,62 +12,51 @@
 - Training: Modal (GPU cloud) + HuggingFace Transformers + LoRA
 - Eval: DeepEval framework + Claude-as-judge
 
+**Resolved Configuration:**
+- Dataset: 12,410 Q&A pairs (90/10 train/val split)
+- HuggingFace: Personal account (user's choice)
+- Model: Qwen2-VL-7B-Instruct
+- DeepEval: Free tier (Confident AI dashboard optional)
+
 ---
 
-## Phase 1: Project Reorganization
+## Phase 1: Project Reorganization ✅ COMPLETE
 
-### New Directory Structure
+### Current Directory Structure
 
 ```
 vlm3/
-├── pipeline/                    # Move current pipeline here
+├── pipeline/                    # Data pipeline
 │   ├── scripts/                 # 01-09 scripts
-│   ├── specs/                   # Pipeline specifications
 │   ├── tests/                   # Pipeline tests
 │   └── config.yaml              # Pipeline config
 │
-├── training/                    # NEW: Fine-tuning infrastructure
-│   ├── modal_train.py           # Modal app for training
-│   ├── modal_serve.py           # Modal app for inference
-│   ├── prepare_dataset.py       # Convert JSONL → HF Dataset format
+├── training/                    # Fine-tuning infrastructure
 │   ├── configs/
-│   │   ├── lora_qwen2vl.yaml    # LoRA training config
-│   │   └── full_qwen2vl.yaml    # Full fine-tune config (if needed)
-│   ├── requirements.txt
+│   │   └── lora_qwen2vl.yaml    # LoRA training config
 │   └── README.md
 │
-├── eval/                        # NEW: Evaluation framework (DeepEval)
-│   ├── run_eval.py              # Main eval runner
-│   ├── test_vlm.py              # DeepEval test cases (pytest compatible)
-│   ├── metrics.py               # Custom metrics if needed
-│   ├── conftest.py              # DeepEval/pytest fixtures
+├── eval/                        # Evaluation framework (DeepEval)
 │   ├── benchmarks/
 │   │   └── manual_probes.json   # Hand-crafted critical questions
-│   ├── reports/                 # Generated eval reports
-│   └── requirements.txt         # deepeval, anthropic, etc.
+│   └── README.md
 │
-├── training_data/               # Pipeline outputs (unchanged)
-│   ├── vlm_train.jsonl
-│   ├── vlm_val.jsonl
+├── scraping/                    # Data collection (placeholder)
+│   └── README.md
+│
+├── specs/                       # Project-wide specifications
+│   └── training_eval_plan.md    # This file
+│
+├── training_data/               # Pipeline outputs
+│   ├── vlm_train.jsonl          # ~11,169 examples
+│   ├── vlm_val.jsonl            # ~1,241 examples
 │   └── images/
 │
 ├── data_src/                    # Source materials (unchanged)
 ├── work/                        # Pipeline intermediates (unchanged)
-│
-├── Makefile                     # Extended with train/eval targets
-├── pyproject.toml               # Optional: unified deps
-└── README.md                    # Updated project overview
+├── Makefile                     # Pipeline orchestration
+└── README.md                    # Project overview
 ```
-
-### Migration Steps
-
-1. Create `pipeline/` directory
-2. Move `scripts/`, `specs/`, `tests/`, `config.yaml` into `pipeline/`
-3. Update relative paths in scripts (or use absolute from project root)
-4. Update Makefile targets to reference `pipeline/scripts/`
-5. Verify `make all` still works after migration
-
-**Risk:** Path breakage. Mitigate by running full pipeline test after migration.
 
 ---
 
@@ -106,7 +96,7 @@ training_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install([
         "torch", "transformers", "accelerate", "peft",
-        "bitsandbytes", "datasets", "wandb", "qwen-vl-utils"
+        "bitsandbytes", "datasets", "qwen-vl-utils"
     ])
 )
 
@@ -118,7 +108,7 @@ volume = modal.Volume.from_name("vlm3-checkpoints", create_if_missing=True)
     gpu="A100-80GB",  # or H100 if available
     timeout=3600 * 8,  # 8 hours max
     volumes={"/checkpoints": volume},
-    secrets=[modal.Secret.from_name("huggingface"), modal.Secret.from_name("wandb")]
+    secrets=[modal.Secret.from_name("huggingface")]
 )
 def train(
     dataset_id: str,           # HuggingFace dataset ID
@@ -199,27 +189,62 @@ eval:
 
 ## Phase 3: Evaluation Framework (DeepEval)
 
+### 3.0 Baseline Eval (IMPORTANT: Run First!)
+
+**Before fine-tuning**, establish baseline performance on Qwen2-VL-7B-Instruct:
+
+```bash
+# Run baseline eval on unmodified model
+deepeval test run eval/test_vlm.py --model Qwen/Qwen2-VL-7B-Instruct
+
+# Save baseline results
+deepeval test run eval/test_vlm.py \
+    --model Qwen/Qwen2-VL-7B-Instruct \
+    --output eval/reports/baseline_qwen2vl.json
+```
+
+This provides a reference point to measure fine-tuning improvement.
+
 ### 3.1 Why DeepEval
 
 - Built-in LLM-as-judge metrics (no custom prompt engineering)
 - Pytest integration — run evals like tests
 - Supports Claude as evaluator model
-- Dashboard for tracking runs over time
+- Dashboard for tracking runs over time (Confident AI - optional)
 - Simple to start, extensible when needed
 
 ### 3.2 DeepEval Metrics We'll Use
 
-**Starting simple with these built-in metrics:**
+**Core metrics (implement immediately):**
 
-| Metric | What it measures | Use case |
-|--------|------------------|----------|
-| `AnswerRelevancyMetric` | Does answer address the question? | All QA pairs |
-| `FaithfulnessMetric` | Is answer grounded in context? | Verify against ground truth |
-| `GEval` | Custom criteria via LLM | Domain-specific quality |
+| Metric | What it measures | Threshold | Use case |
+|--------|------------------|-----------|----------|
+| `AnswerRelevancyMetric` | Does answer address the question? | > 0.7 | All QA pairs |
+| `FaithfulnessMetric` | Is answer grounded in context? | > 0.7 | Verify against ground truth |
+| `GEval` | Custom criteria via LLM | > 0.7 | Domain-specific quality |
+| `NumericExactMatch` | Torque specs, measurements match exactly | > 0.85 | Specifications |
+| `KeywordPresence` | Required technical terms present | > 0.80 | Procedures, components |
 
-**Later, if needed:**
-- `HallucinationMetric` — Check for fabricated specs/values
-- Custom metric for exact numeric match (torque specs, etc.)
+**Custom metrics to implement:**
+
+```python
+# eval/metrics.py
+from deepeval.metrics import BaseMetric
+
+class NumericExactMatch(BaseMetric):
+    """Check if numeric values (torque, pressure, etc.) match exactly."""
+    def measure(self, test_case):
+        # Extract numbers from expected and actual
+        # Compare with tolerance (e.g., ±1 Nm for torque)
+        pass
+
+class KeywordPresence(BaseMetric):
+    """Check if required technical keywords are present."""
+    def measure(self, test_case):
+        # Extract expected keywords from metadata
+        # Check presence in actual output
+        pass
+```
 
 ### 3.3 Basic Test Structure
 
@@ -427,35 +452,40 @@ model = PeftModel.from_pretrained(base_model, "path/to/adapter")
 
 ## Implementation Checklist
 
-### Phase 1: Reorganization
-- [ ] Create new directory structure
-- [ ] Move pipeline files
-- [ ] Update paths and imports
-- [ ] Verify pipeline still works
-- [ ] Update root README
+### Phase 1: Reorganization ✅ COMPLETE
+- [x] Create new directory structure
+- [x] Move pipeline files to `pipeline/`
+- [x] Update Makefile paths
+- [x] Remove legacy LLM config from `pipeline/config.yaml`
+- [x] Verify pipeline still works (`make status`, `pytest pipeline/tests/`)
+- [x] Update root README and CLAUDE.md
+- [x] Add placeholder READMEs to `training/`, `eval/`, `scraping/`
 
 ### Phase 2: Training
-- [ ] Write `prepare_dataset.py`
-- [ ] Write `modal_train.py`
-- [ ] Create training configs
-- [ ] Set up Modal secrets (HF token, W&B)
-- [ ] Test training on small subset
+- [ ] Write `training/prepare_dataset.py`
+- [ ] Write `training/modal_train.py`
+- [ ] Training configs already created: `training/configs/lora_qwen2vl.yaml`
+- [ ] Set up Modal secrets (HF token only — W&B skipped)
+- [ ] Test training on small subset (~100 examples)
 - [ ] Run full training
 - [ ] Push model to HuggingFace
 
 ### Phase 3: Evaluation (DeepEval)
+- [ ] **Run baseline eval on Qwen2-VL-7B-Instruct FIRST**
 - [ ] Install DeepEval (`pip install deepeval`)
 - [ ] Configure Claude as evaluator model
-- [ ] Write `run_eval.py` (load model, generate predictions)
-- [ ] Write `test_vlm.py` (DeepEval test cases)
-- [ ] Create `conftest.py` (fixtures for model, test data)
-- [ ] Create manual benchmark probes (20-30 questions)
-- [ ] Run initial eval with `deepeval test run`
-- [ ] Review DeepEval dashboard/report
+- [ ] Write `eval/run_eval.py` (load model, generate predictions)
+- [ ] Write `eval/test_vlm.py` (DeepEval test cases)
+- [ ] Implement `eval/metrics.py` (NumericExactMatch, KeywordPresence)
+- [ ] Create `eval/conftest.py` (fixtures for model, test data)
+- [ ] Create manual benchmark probes (20-30 questions) in `eval/benchmarks/manual_probes.json`
+- [ ] Run baseline eval: `deepeval test run eval/test_vlm.py --model Qwen/Qwen2-VL-7B-Instruct`
+- [ ] Run fine-tuned eval: `deepeval test run eval/test_vlm.py --model your-model`
+- [ ] Compare baseline vs fine-tuned results
 - [ ] Analyze failures by content type
 
 ### Phase 4: Deployment
-- [ ] Write `modal_serve.py`
+- [ ] Write `training/modal_serve.py`
 - [ ] Test inference endpoint
 - [ ] Document API usage
 
@@ -543,22 +573,24 @@ serve-local:
 
 ---
 
-## Open Questions
+## Open Questions (Resolved)
 
-1. **Dataset size:** How many QA pairs does the pipeline produce? (Affects training time/cost)
-2. **Validation split:** Current 85/15 split reasonable, or adjust?
-3. **HuggingFace org:** Push models/datasets to personal account or create org?
-4. **W&B tracking:** Want experiment tracking, or skip for simplicity?
-5. **Multi-image support:** Any QA pairs reference multiple images? (Affects model choice)
-6. **DeepEval account:** Free tier works, but Confident AI dashboard requires signup — worth it?
+| Question | Resolution |
+|----------|------------|
+| Dataset size | 12,410 QA pairs (90/10 split → ~11,169 train, ~1,241 val) |
+| Validation split | 90/10 (configured in pipeline/config.yaml) |
+| HuggingFace org | Personal account |
+| Experiment tracking | Skip W&B for simplicity (can add later) |
+| Multi-image support | No — each QA pair references single image |
+| DeepEval account | Free tier sufficient; Confident AI dashboard optional |
 
 ---
 
 ## Notes
 
-- Plan drafted before pipeline completion
-- Adjust based on actual pipeline output quality
+- Phase 1 (reorganization) complete
+- Phase 2 ready for implementation by separate agent
 - Modal account required (free tier has GPU credits)
 - HuggingFace account required for dataset/model hosting
 - DeepEval: `pip install deepeval` — uses Claude as evaluator via existing Anthropic API key
-- Can add second evaluator (GPT-4o) later if cross-validation needed
+- **Baseline eval on Qwen2-VL-7B-Instruct should run BEFORE fine-tuning**

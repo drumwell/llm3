@@ -87,52 +87,6 @@ validation:
   step_line_regex: "^\\s*\\d[\\)\\.]\\s"
   max_output_tokens: 200
 
-# HuggingFace finetuning configuration
-huggingface:
-  model_name: "meta-llama/Llama-3.2-3B-Instruct"
-  task_prefix_format: "[{TASK}] {instruction}"
-  max_seq_length: 512
-
-# QLoRA configuration for efficient finetuning
-qlora:
-  r: 16                    # LoRA rank (attention dimension)
-  lora_alpha: 32          # LoRA scaling factor (typically 2x rank)
-  lora_dropout: 0.05      # Dropout for LoRA layers
-  target_modules:         # Which modules to apply LoRA
-    - "q_proj"
-    - "v_proj"
-    - "k_proj"
-    - "o_proj"
-  bias: "none"            # Bias handling: none, all, lora_only
-  task_type: "CAUSAL_LM"  # Task type for PEFT
-
-# Training hyperparameters (optimized for Llama-3.2-3B)
-training:
-  num_epochs: 3
-  per_device_train_batch_size: 8  # Larger batch for smaller model
-  gradient_accumulation_steps: 2  # Effective batch size = 8 * 2 = 16
-  learning_rate: 2e-4
-  warmup_ratio: 0.1               # 10% of steps for warmup
-  weight_decay: 0.01
-  optim: "paged_adamw_8bit"       # 8-bit optimizer for memory efficiency
-  logging_steps: 10
-  save_strategy: "epoch"          # Save checkpoint each epoch
-  eval_strategy: "epoch"          # Evaluate each epoch (renamed from evaluation_strategy)
-  save_total_limit: 2             # Keep only 2 best checkpoints
-  load_best_model_at_end: true
-  metric_for_best_model: "loss"
-  gradient_checkpointing: true    # Memory optimization
-  fp16: true                      # Mixed precision training (use bf16 for A100)
-
-# Class weights for loss computation (inverse frequency)
-# Used during training to balance task importance
-class_weights:
-  spec: 0.5             # Downweight majority class
-  explanation: 1.0      # Baseline weight
-  procedure: 3.0        # Upweight minority class
-  wiring: 5.0           # Upweight minority class
-  troubleshooting: 10.0 # Upweight extremely rare class
-
 # Stage 4: Q&A Generation settings
 generation:
   # API settings

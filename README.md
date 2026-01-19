@@ -158,35 +158,55 @@ data_src/ (JPG/PDF/HTML)
 
 ```
 vlm3/
-├── data_src/           # Source images, PDFs, HTML (read-only input)
+├── pipeline/                # Data pipeline
+│   ├── scripts/             # Pipeline scripts (01-09)
+│   ├── tests/               # pytest test suite
+│   └── config.yaml          # Pipeline configuration
+│
+├── training/                # VLM fine-tuning (future)
+│   ├── configs/
+│   │   └── lora_qwen2vl.yaml
+│   └── README.md
+│
+├── eval/                    # Model evaluation (future)
+│   ├── benchmarks/
+│   │   └── manual_probes.json
+│   └── README.md
+│
+├── scraping/                # Data collection (future)
+│   └── README.md
+│
+├── specs/                   # Project-wide specifications
+│   └── training_eval_plan.md
+│
+├── data_src/                # Source images, PDFs, HTML (read-only)
 │   ├── 00 - Maintenance/
 │   ├── 11 - Engine/
 │   ├── 21 - Clutch/
 │   ├── ...
 │   ├── M3-techspec.html
 │   └── 320is-techspec.html
-├── work/               # Intermediate artifacts
+│
+├── work/                    # Intermediate artifacts
 │   ├── inventory.csv
-│   ├── inventory_prepared.csv
 │   ├── classified/pages.csv
 │   ├── indices/*.json
 │   ├── qa_raw/, qa_filtered/, qa_unique/
 │   └── logs/
-├── training_data/      # Final outputs
+│
+├── training_data/           # Final outputs
 │   ├── vlm_train.jsonl
 │   ├── vlm_val.jsonl
 │   └── images/
-├── scripts/            # Pipeline scripts (01-09)
-├── specs/              # Detailed specifications per stage
-├── tests/              # pytest test suite
-├── config.yaml         # Pipeline configuration
-├── Makefile            # Orchestration
-└── CLAUDE.md           # Claude Code project brief
+│
+├── Makefile                 # Orchestration
+├── CLAUDE.md                # Claude Code project brief
+└── README.md
 ```
 
 ## Configuration
 
-All settings in `config.yaml`:
+All settings in `pipeline/config.yaml`:
 
 - **API**: Model selection, rate limits, retries
 - **Classification**: Content type patterns, source detection
@@ -211,10 +231,10 @@ Key dependencies:
 ## Testing
 
 ```bash
-pytest tests/                      # Run all tests
-pytest tests/test_01_inventory.py  # Single test file
-pytest tests/ -k "classify"        # Tests matching pattern
-pytest tests/ -v                   # Verbose output
+pytest pipeline/tests/                      # Run all tests
+pytest pipeline/tests/test_01_inventory.py  # Single test file
+pytest pipeline/tests/ -k "classify"        # Tests matching pattern
+pytest pipeline/tests/ -v                   # Verbose output
 ```
 
 ## License

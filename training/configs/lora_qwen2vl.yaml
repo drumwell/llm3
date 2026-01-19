@@ -1,0 +1,37 @@
+# LoRA Configuration for Qwen2-VL-7B Fine-tuning
+# See specs/training_eval_plan.md for details
+
+base_model: Qwen/Qwen2-VL-7B-Instruct
+method: lora
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2e-4
+  lr_scheduler: cosine
+  warmup_ratio: 0.03
+  max_grad_norm: 1.0
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_quant_type: nf4
+
+eval:
+  eval_steps: 100
+  save_steps: 100
+  logging_steps: 10

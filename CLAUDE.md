@@ -32,10 +32,10 @@ make upload                 # Stage 6c: Upload to HuggingFace
 
 ### Testing
 ```bash
-pytest tests/                           # All tests
-pytest tests/test_01_inventory.py       # Single file
-pytest tests/ -k "classify"             # Pattern match
-pytest tests/ -v                        # Verbose
+pytest pipeline/tests/                           # All tests
+pytest pipeline/tests/test_01_inventory.py       # Single file
+pytest pipeline/tests/ -k "classify"             # Pattern match
+pytest pipeline/tests/ -v                        # Verbose
 ```
 
 ### Environment
@@ -50,21 +50,21 @@ export ANTHROPIC_API_KEY=your_key      # Required for Stages 3-4
 ```
 data_src/ (JPG/PDF/HTML)
     ↓
-01_inventory.py        → work/inventory.csv
+pipeline/scripts/01_inventory.py        → work/inventory.csv
     ↓
-02_prepare_sources.py  → work/inventory_prepared.csv (+ PDF→JPG)
+pipeline/scripts/02_prepare_sources.py  → work/inventory_prepared.csv (+ PDF→JPG)
     ↓
-03_classify_pages.py   → work/classified/pages.csv + work/indices/*.json
+pipeline/scripts/03_classify_pages.py   → work/classified/pages.csv + work/indices/*.json
     ↓
-04a_generate_qa_images.py  ┐
-04b_generate_qa_html.py    ┘→ work/qa_raw/*.json
+pipeline/scripts/04a_generate_qa_images.py  ┐
+pipeline/scripts/04b_generate_qa_html.py    ┘→ work/qa_raw/*.json
     ↓
-05_filter_qa.py        → work/qa_filtered/*.json
-06_deduplicate_qa.py   → work/qa_unique/*.json
+pipeline/scripts/05_filter_qa.py        → work/qa_filtered/*.json
+pipeline/scripts/06_deduplicate_qa.py   → work/qa_unique/*.json
     ↓
-07_emit_vlm_dataset.py → training_data/vlm_train.jsonl + training_data/vlm_val.jsonl + training_data/images/
-08_validate_vlm.py     → work/logs/vlm_qa_report.md
-09_upload_vlm.py       → HuggingFace Hub
+pipeline/scripts/07_emit_vlm_dataset.py → training_data/vlm_train.jsonl + training_data/vlm_val.jsonl + training_data/images/
+pipeline/scripts/08_validate_vlm.py     → work/logs/vlm_qa_report.md
+pipeline/scripts/09_upload_vlm.py       → HuggingFace Hub
 ```
 
 ### Source Types (different prompt templates)
@@ -98,7 +98,7 @@ page_id, image_path, section_id, section_name, source_type, content_type, is_ind
 
 ## Configuration
 
-`config.yaml` contains all pipeline settings:
+`pipeline/config.yaml` contains all pipeline settings:
 - `api` — Model selection, rate limits, retries
 - `classification` — Content type patterns
 - `generation` — Questions per page, skip patterns, cost controls
@@ -108,12 +108,20 @@ page_id, image_path, section_id, section_name, source_type, content_type, is_ind
 ## Directory Layout
 
 ```
-data_src/       # Source images/PDFs/HTML (read-only)
-work/           # Intermediate artifacts
-training_data/  # Final outputs (vlm_train.jsonl, vlm_val.jsonl, images/)
-scripts/        # Pipeline scripts 01-09
-specs/          # Detailed stage specifications
-tests/          # pytest suite with fixtures in conftest.py
+vlm3/
+├── pipeline/             # Data pipeline
+│   ├── scripts/          # Pipeline scripts 01-09
+│   ├── tests/            # pytest suite with fixtures in conftest.py
+│   └── config.yaml       # Pipeline configuration
+├── training/             # VLM fine-tuning (future)
+│   └── configs/          # LoRA training configs
+├── eval/                 # Model evaluation (future)
+│   └── benchmarks/       # Manual test probes
+├── scraping/             # Data collection (future)
+├── specs/                # Project-wide specifications
+├── data_src/             # Source images/PDFs/HTML (read-only)
+├── work/                 # Intermediate artifacts
+└── training_data/        # Final outputs (vlm_train.jsonl, vlm_val.jsonl, images/)
 ```
 
 ## Script Pattern
@@ -121,5 +129,5 @@ tests/          # pytest suite with fixtures in conftest.py
 All scripts follow consistent conventions:
 - CLI with argparse and `--help`
 - Idempotent (safe to rerun)
-- Config loaded from `config.yaml`
+- Config loaded from `pipeline/config.yaml`
 - Logging to stdout and `work/logs/`

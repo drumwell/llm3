@@ -56,10 +56,10 @@ Stages:
 
 Example workflow:
   1. Run 'discover' first to find forum IDs
-  2. Edit this script to set TEST_FORUM_ID
-  3. Run 'threads', 'posts', 'images' in sequence
+  2. Run '--stage all' to scrape all discovered forums
+  3. Or use '--forum-id X' to scrape a specific forum
 
-Or run 'all' after setting TEST_FORUM_ID.
+Running '--stage all' without --forum-id will scrape ALL discovered forums.
 """,
     )
 
@@ -136,18 +136,31 @@ Or run 'all' after setting TEST_FORUM_ID.
 
         elif stage == "threads":
             forum_id = args.forum_id
-            if not forum_id:
+            # Determine if we're running all stages (use --all) or single stage (require forum-id)
+            running_all_stages = args.stage == "all"
+
+            if forum_id:
+                # Specific forum requested
+                cmd = [
+                    python, str(base_dir / "scraper/02_scrape_threads.py"),
+                    "--forum-id", forum_id,
+                    "--max-pages", str(args.max_pages),
+                    *verbose_flag,
+                ]
+            elif running_all_stages:
+                # Running all stages - use --all to scrape all discovered forums
+                cmd = [
+                    python, str(base_dir / "scraper/02_scrape_threads.py"),
+                    "--all",
+                    "--max-pages", str(args.max_pages),
+                    *verbose_flag,
+                ]
+            else:
                 print("ERROR: --forum-id is required for threads stage")
                 print("Run 'discover' stage first, then set the forum ID")
+                print("Or use '--stage all' to scrape all discovered forums")
                 return 1
 
-            # Stage 2: Scrape thread listings
-            cmd = [
-                python, str(base_dir / "scraper/02_scrape_threads.py"),
-                "--forum-id", forum_id,
-                "--max-pages", str(args.max_pages),
-                *verbose_flag,
-            ]
             ret = run_command(cmd, args.dry_run)
             if ret != 0:
                 print(f"Stage 'threads' failed with code {ret}")
@@ -155,18 +168,31 @@ Or run 'all' after setting TEST_FORUM_ID.
 
         elif stage == "posts":
             forum_id = args.forum_id
-            if not forum_id:
+            running_all_stages = args.stage == "all"
+
+            if forum_id:
+                # Specific forum requested
+                cmd = [
+                    python, str(base_dir / "scraper/03_scrape_posts.py"),
+                    "--forum-id", forum_id,
+                    "--max-threads", str(args.max_threads),
+                    "--max-pages", str(args.max_pages),
+                    *verbose_flag,
+                ]
+            elif running_all_stages:
+                # Running all stages - use --all to scrape all forums
+                cmd = [
+                    python, str(base_dir / "scraper/03_scrape_posts.py"),
+                    "--all",
+                    "--max-threads", str(args.max_threads),
+                    "--max-pages", str(args.max_pages),
+                    *verbose_flag,
+                ]
+            else:
                 print("ERROR: --forum-id is required for posts stage")
+                print("Or use '--stage all' to scrape all discovered forums")
                 return 1
 
-            # Stage 3: Scrape posts
-            cmd = [
-                python, str(base_dir / "scraper/03_scrape_posts.py"),
-                "--forum-id", forum_id,
-                "--max-threads", str(args.max_threads),
-                "--max-pages", str(args.max_pages),
-                *verbose_flag,
-            ]
             ret = run_command(cmd, args.dry_run)
             if ret != 0:
                 print(f"Stage 'posts' failed with code {ret}")
@@ -182,7 +208,7 @@ Or run 'all' after setting TEST_FORUM_ID.
                     *verbose_flag,
                 ]
             else:
-                # Download all images
+                # Download all images (works for both --stage all and --stage images without forum-id)
                 cmd = [
                     python, str(base_dir / "scraper/04_download_images.py"),
                     "--all",

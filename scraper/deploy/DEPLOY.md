@@ -197,12 +197,15 @@ Go to: **GitHub repo → Settings → Secrets and variables → Actions → Repo
 
 Add these secrets:
 
-| Secret Name | Value |
-|-------------|-------|
-| `AWS_ACCESS_KEY_ID` | AccessKeyId from IAM user creation |
-| `AWS_SECRET_ACCESS_KEY` | SecretAccessKey from IAM user creation |
-| `AWS_REGION` | `us-east-1` (or your preferred region) |
-| `S3_BUCKET` | Your S3 bucket name (e.g., `vlm3-scraper-YOUR-ID`) |
+| Secret Name | Required | Value |
+|-------------|----------|-------|
+| `AWS_ACCESS_KEY_ID` | Yes | AccessKeyId from IAM user creation |
+| `AWS_SECRET_ACCESS_KEY` | Yes | SecretAccessKey from IAM user creation |
+| `AWS_REGION` | No | `us-east-1` (default if not set) |
+| `S3_BUCKET` | Yes | Your S3 bucket name (e.g., `vlm3-scraper-results`) |
+| `E30M3_FORUM_URL` | Yes | Base URL of the forum to scrape |
+| `OXYLABS_USERNAME` | No | Oxylabs proxy username (for Cloudflare bypass) |
+| `OXYLABS_PASSWORD` | No | Oxylabs proxy password |
 
 ### Step 2: Deploy Infrastructure
 
@@ -216,14 +219,33 @@ Add these secrets:
 This creates:
 - EC2 Spot instance (Amazon Linux 2023)
 - IAM role for the instance
-- Security group (HTTPS/HTTP egress)
+- Security group (HTTPS/HTTP egress + Oxylabs port 7777)
 - CloudWatch log group
 - Automatic S3 sync (every 6 hours)
+- `.env` file with forum URL and proxy credentials from secrets
 
-### Step 3: Connect and Configure Instance
+The deploy action is fully automated - no manual SSH/SSM required.
 
-After deployment succeeds, connect to the instance:
+### Step 3: Validate with Test Action
 
+After deploy succeeds, run the test action to validate everything works:
+
+1. Go to Actions → "Forum Scraper"
+2. Run workflow:
+   - **Action**: `test`
+3. This runs discovery and shows results in the workflow summary
+
+### Step 4: Run the Full Scraper
+
+**Via GitHub Actions (recommended):**
+1. Go to Actions → "Forum Scraper"
+2. Run workflow:
+   - **Action**: `start`
+   - **Stage**: `all` (or specific stage)
+3. Monitor with `status` action
+4. Save results with `sync` action
+
+**Manual SSM access (optional, for debugging):**
 ```bash
 # Install SSM plugin if needed (macOS)
 brew install --cask session-manager-plugin
@@ -236,47 +258,12 @@ INSTANCE_ID=$(aws cloudformation describe-stacks \
 
 # Connect via SSM
 aws ssm start-session --target $INSTANCE_ID
-```
 
-**First time setup on the instance** (run these once after deployment):
-
-```bash
-# Switch to ec2-user
+# On instance:
 sudo su - ec2-user
-
-# Fix repo ownership (cloned as root during setup)
-sudo chown -R ec2-user:ec2-user ~/scraper
-
-# Add git safe directory
-git config --global --add safe.directory /home/ec2-user/scraper
-
-# Create data directories with correct permissions
-mkdir -p ~/scraper/data_src/forum/{logs,raw,data,checkpoints}
-
-# Set the forum URL
-cd ~/scraper
-echo "E30M3_FORUM_URL=https://your-forum-url.com" > .env
-
-# Verify setup
-cat .env
-ls -la data_src/forum/
-```
-
-### Step 4: Run the Scraper
-
-**Via GitHub Actions:**
-1. Go to Actions → "Forum Scraper"
-2. Run workflow:
-   - **Action**: `start`
-   - **Stage**: `discover` (first run to find all forums)
-3. After discover completes, run again with `stage=all` for full scrape
-
-**Or manually via SSM:**
-```bash
-cd /home/ec2-user/scraper
+cd scraper
 source .venv/bin/activate
-python scraper/01_discover_forums.py          # Find forums
-python scraper/run_test_scrape.py --stage all # Full scrape
+tail -f data_src/forum/logs/scraper.log
 ```
 
 ---
@@ -302,7 +289,7 @@ python scraper/run_test_scrape.py --stage all # Full scrape
 INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name e30-forum-scraper \
   --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text)
 aws ssm start-session --target $INSTANCE_ID
-# Then: tail -f /home/ec2-user/scraper/forum_archive/logs/scraper.log
+# Then: tail -f /home/ec2-user/scraper/data_src/forum/logs/scraper.log
 ```
 
 ### Sync to S3
@@ -330,7 +317,7 @@ aws ssm start-session --target $INSTANCE_ID
 **On EC2:**
 ```
 /home/ec2-user/scraper/
-├── forum_archive/
+├── data_src/forum/
 │   ├── data/           # Scraped data (JSON)
 │   ├── raw/            # Raw HTML
 │   ├── checkpoints/    # Resume state
@@ -341,7 +328,7 @@ aws ssm start-session --target $INSTANCE_ID
 **On S3:**
 ```
 s3://YOUR-BUCKET/
-├── forum_archive/      # Synced data
+├── data_src/forum/     # Synced data
 └── logs/               # Archived logs
 ```
 

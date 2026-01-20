@@ -368,9 +368,16 @@ jobs:
           MAX_THREADS="${{ github.event.inputs.max_threads }}"
 
           # Build the scraper command
+          # Note: run_test_scrape.py defaults to test limits, so pass 0 for unlimited
           if [ "$STAGE" = "all" ]; then
             SCRAPER_CMD="python scraper/run_test_scrape.py --stage all"
             [ -n "$FORUM_ID" ] && SCRAPER_CMD="$SCRAPER_CMD --forum-id $FORUM_ID"
+            # Pass unlimited unless user specified limits
+            if [ -z "$MAX_THREADS" ]; then
+              SCRAPER_CMD="$SCRAPER_CMD --max-threads 0 --max-pages 0"
+            else
+              SCRAPER_CMD="$SCRAPER_CMD --max-threads $MAX_THREADS --max-pages 0"
+            fi
           else
             case $STAGE in
               discover) SCRAPER_CMD="python scraper/01_discover_forums.py" ;;
@@ -378,8 +385,8 @@ jobs:
               posts)    SCRAPER_CMD="python scraper/03_scrape_posts.py --forum-id $FORUM_ID" ;;
               images)   SCRAPER_CMD="python scraper/04_download_images.py --forum-id $FORUM_ID" ;;
             esac
+            [ -n "$MAX_THREADS" ] && SCRAPER_CMD="$SCRAPER_CMD --max-threads $MAX_THREADS"
           fi
-          [ -n "$MAX_THREADS" ] && SCRAPER_CMD="$SCRAPER_CMD --max-threads $MAX_THREADS"
 
           # Start scraper in background with proper logging
           COMMAND_ID=$(aws ssm send-command \

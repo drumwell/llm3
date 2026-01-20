@@ -216,13 +216,13 @@ jobs:
             --instance-ids ${{ steps.instance.outputs.instance_id }} \
             --document-name "AWS-RunShellScript" \
             --parameters commands='[
-              "echo \"=== Environment ===\"",
-              "cat /home/ec2-user/scraper/.env | sed \"s/=.*/=****/\"",
-              "echo \"\"",
-              "echo \"=== Python packages ===\"",
-              "sudo -u ec2-user bash -c \"cd /home/ec2-user/scraper && source .venv/bin/activate && pip list | grep -E '(requests|beautifulsoup|cloudscraper)'\"",
-              "echo \"\"",
-              "echo \"=== Directory structure ===\"",
+              "echo === Environment ===",
+              "cat /home/ec2-user/scraper/.env | sed s/=.*/=****/",
+              "echo",
+              "echo === Python packages ===",
+              "cd /home/ec2-user/scraper && source .venv/bin/activate && pip list | grep -i -e requests -e beautifulsoup -e cloudscraper",
+              "echo",
+              "echo === Directory structure ===",
               "ls -la /home/ec2-user/scraper/data_src/forum/"
             ]' \
             --query "Command.CommandId" \
